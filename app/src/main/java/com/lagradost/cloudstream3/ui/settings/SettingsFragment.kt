@@ -1,12 +1,21 @@
 package com.lagradost.cloudstream3.ui.settings
 
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.util.Log
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
 import android.widget.ImageView
+import android.widget.TextView
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.children
 import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.Fragment
@@ -15,6 +24,7 @@ import androidx.preference.PreferenceFragmentCompat
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.MaterialToolbar
 import com.lagradost.cloudstream3.BuildConfig
+import com.lagradost.cloudstream3.PremiumManager
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.databinding.MainSettingsBinding
 import com.lagradost.cloudstream3.mvvm.logError
@@ -42,16 +52,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-
-// --- IMPORT TAMBAHAN ADIXTREAM ---
-import android.graphics.Color
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.style.ForegroundColorSpan
-import android.widget.Button
-import androidx.appcompat.app.AlertDialog
-import com.lagradost.cloudstream3.PremiumManager
-// -----------------------
 
 class SettingsFragment : BaseFragment<MainSettingsBinding>(
     BaseFragment.BindingCreator.Inflate(MainSettingsBinding::inflate)
@@ -332,6 +332,42 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
 
         binding.appVersion.text = appVersion
         binding.buildDate.text = buildTimestamp
+
+        // ====================================================================
+        // TAMBAHKAN STATUS PREMIUM DI BAWAH INFORMASI VERSI
+        // ====================================================================
+        // Cegah penambahan view berulang
+        if (binding.root.findViewWithTag<View>("premium_status_tag") == null) {
+            val parentLayout = binding.buildDate.parent as? ViewGroup
+            if (parentLayout != null) {
+                val premiumStatusView = TextView(requireContext()).apply {
+                    tag = "premium_status_tag"
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    gravity = Gravity.CENTER
+                    textSize = 14f
+                    setPadding(0, 8.toPx, 0, 0)
+                    // Warna default (akan diubah)
+                    setTextColor(Color.WHITE)
+                }
+
+                val isPremium = PremiumManager.isPremium(requireContext())
+                if (isPremium) {
+                    val expiryDate = PremiumManager.getExpiryDateString(requireContext())
+                    premiumStatusView.text = "Status Langganan: Aktif s/d $expiryDate"
+                    premiumStatusView.setTextColor(Color.parseColor("#4CAF50")) // hijau
+                } else {
+                    premiumStatusView.text = "Status Langganan: Gratis"
+                    premiumStatusView.setTextColor(Color.parseColor("#F44336")) // merah
+                }
+
+                parentLayout.addView(premiumStatusView)
+            }
+        }
+        // ====================================================================
+
         binding.appVersionInfo.setOnLongClickListener {
             clipboardHelper(txt(R.string.extension_version), "$appVersion $commitInfo $buildTimestamp")
             true
