@@ -9,16 +9,15 @@ import com.lagradost.cloudstream3.ui.result.ResultEpisode
 import com.lagradost.cloudstream3.utils.txt
 import java.util.concurrent.ConcurrentHashMap
 
-
-enum class SkipType(@StringRes val res: Int) {
-    Opening(R.string.skip_type_op),
-    Ending(R.string.skip_type_ed),
-    Recap(R.string.skip_type_recap),
-    MixedOpening(R.string.skip_type_mixed_op),
-    MixedEnding(R.string.skip_type_mixed_ed),
-    Credits(R.string.skip_type_creddits),
-    Intro(R.string.skip_type_intro),
-    Preview(R.string.skip_type_preview),
+enum class SkipType(val displayName: String) {
+    Opening("Opening"),
+    Ending("Ending"),
+    Recap("Recap"),
+    MixedOpening("Mixed Opening"),
+    MixedEnding("Mixed Ending"),
+    Credits("Credits"),
+    Intro("Intro"),
+    Preview("Preview"),
 }
 
 data class SkipStamp(
@@ -40,7 +39,7 @@ data class VideoSkipStamp(
         if (skipToNextEpisode) txt(R.string.next_episode) else
             txt(
                 R.string.skip_type_format,
-                timestamp.label?.let { txt(it) } ?: txt(timestamp.type.res)
+                timestamp.label?.let { txt(it) } ?: timestamp.type.displayName
             )
 }
 
