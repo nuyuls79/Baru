@@ -18,9 +18,9 @@ object PremiumManager {
     private const val SALT = "ADIXTREAM_SECRET_KEY_2026_SECURE" 
     private const val EPOCH_YEAR = 2025 
 
-    // Repository URLs dari RepoProtector
-    val PREMIUM_REPO_URL = RepoProtector.decode(RepoProtector.PREMIUM_REPO_ENCODED)
-    val FREE_REPO_URL = RepoProtector.decode(RepoProtector.FREE_REPO_ENCODED)
+    // ✅ URL diambil dari native (tidak lagi decode konstanta di Kotlin)
+    val PREMIUM_REPO_URL = RepoProtector.getPremiumRepoUrl()
+    val FREE_REPO_URL = RepoProtector.getFreeRepoUrl()
 
     /**
      * Mengambil ID Unik Perangkat yang konsisten dengan tampilan UI
