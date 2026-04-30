@@ -4,15 +4,20 @@ import android.content.Context
 import android.provider.Settings
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.security.MessageDigest
+import java.util.Calendar
 import com.lagradost.cloudstream3.utils.RepoProtector
 
 object PremiumManager {
-    private const val PREF_NAME = "adixtream_premium_encrypted"
+    private const val PREF_NAME = "adixtream_premium_enc"
     private const val PREF_IS_PREMIUM = "is_premium_user"
     private const val PREF_EXPIRY_DATE = "premium_expiry_date"
+
+    private const val SALT = "ADIXTREAM_SECRET_KEY_2026_SECURE"
+    private const val EPOCH_YEAR = 2025
+
+    val PREMIUM_REPO_URL = RepoProtector.getPremiumRepoUrl()
+    val FREE_REPO_URL = RepoProtector.getFreeRepoUrl()
 
     private fun getPrefs(context: Context) = EncryptedSharedPreferences.create(
         PREF_NAME,
@@ -22,16 +27,55 @@ object PremiumManager {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    val PREMIUM_REPO_URL = RepoProtector.getPremiumRepoUrl()
-    val FREE_REPO_URL = RepoProtector.getFreeRepoUrl()
-
     fun getDeviceId(context: Context): String {
         val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "00000000"
         return kotlin.math.abs(androidId.hashCode()).toString().take(8)
     }
 
+    /**
+     * Aktivasi premium – logika asli Kotlin (sudah terbukti bekerja).
+     * Native hanya dipanggil untuk cek signature APK (opsional).
+     */
     fun activatePremiumWithCode(context: Context, code: String, deviceId: String): Boolean {
-        return nativeActivatePremium(code, deviceId)
+        if (code.length != 6) return false
+
+        return try {
+            val inputCode = code.uppercase()
+            val datePartHex = inputCode.substring(0, 3)
+            val sigPartHex = inputCode.substring(3, 6)
+
+            // Verifikasi signature
+            val checkInput = "$deviceId$datePartHex$SALT"
+            val md = MessageDigest.getInstance("MD5")
+            val digest = md.digest(checkInput.toByteArray(Charsets.UTF_8))
+            val expectedSig = digest.joinToString("") { "%02x".format(it) }
+                .substring(0, 3).uppercase()
+
+            if (sigPartHex != expectedSig) return false
+
+            // Kalkulasi expiry
+            val daysFromEpoch = datePartHex.toInt(16)
+            val expiryCal = Calendar.getInstance().apply {
+                set(EPOCH_YEAR, Calendar.JANUARY, 1, 0, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+                add(Calendar.DAY_OF_YEAR, daysFromEpoch)
+                set(Calendar.HOUR_OF_DAY, 23)
+                set(Calendar.MINUTE, 59)
+                set(Calendar.SECOND, 59)
+            }
+            val expiryTime = expiryCal.timeInMillis
+            if (System.currentTimeMillis() > expiryTime) return false
+
+            // Simpan terenkripsi
+            getPrefs(context).edit().apply {
+                putBoolean(PREF_IS_PREMIUM, true)
+                putLong(PREF_EXPIRY_DATE, expiryTime)
+                apply()
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun isPremium(context: Context): Boolean {
@@ -55,25 +99,14 @@ object PremiumManager {
 
     fun getExpiryDateString(context: Context): String {
         val date = getPrefs(context).getLong(PREF_EXPIRY_DATE, 0)
-        return if (date == 0L) "Non-Premium" else SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(date))
+        return if (date == 0L) "Non-Premium" else java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(date))
     }
 
     fun getExpiryDateMillis(context: Context): Long {
         return getPrefs(context).getLong(PREF_EXPIRY_DATE, 0)
     }
 
-    // Dipanggil dari native
-    @JvmStatic
-    fun persistPremiumData(isPremium: Boolean, expiryMillis: Long) {
-        // Ini akan dipanggil oleh native setelah validasi
-        // Kita perlu context, tapi native tidak punya. Solusinya gunakan callback di aktivasi.
-        // Untuk native langsung memanggil ini, dibutuhkan context global. Nanti akan kita atur.
-    }
-
-    // Native methods
-    @JvmStatic
-    external fun nativeActivatePremium(code: String, deviceId: String): Boolean
-
+    // Native method untuk deteksi repack (cek signature APK)
     @JvmStatic
     external fun isSignatureValid(): Boolean
 }
