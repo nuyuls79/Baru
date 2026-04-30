@@ -21,7 +21,7 @@
 #-renamesourcefileattribute SourceFile
 
 # ============================================================
-# ATURAN R8 UNTUK ADIXTREAM
+# ATURAN R8 UNTUK ADIXTREAM (FIXED)
 # ============================================================
 
 # === 1. Aturan umum untuk atribut dan anotasi ===
@@ -46,14 +46,17 @@
     public static * inflate(android.view.LayoutInflater);
 }
 
-# === 5. Abaikan class yang tidak ada di Android (java.beans, javax.script, dll.) ===
+# === 5. PENTING: Jangan obfuscate package utama (agar plugin & refleksi tetap bekerja) ===
+-keep class com.lagradost.cloudstream3.** { *; }
+
+# === 6. Abaikan class yang tidak ada di Android (java.beans, javax.script, dll.) ===
 -dontwarn com.google.re2j.**
 -dontwarn java.beans.**
 -dontwarn javax.script.**
 
-# === 6. Opsional: Abaikan warning agar build tidak gagal ===
--ignorewarnings
-
 # === 7. Library eksternal ===
 -dontwarn okhttp3.**
 -dontwarn okio.**
+
+# === 8. Opsional: Abaikan warning agar build tidak gagal ===
+-ignorewarnings
