@@ -1,4 +1,4 @@
-name: Build Release (FINAL FIX)
+name: Build Release (FINAL XOR)
 
 on:
   workflow_dispatch:
