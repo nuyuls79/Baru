@@ -102,6 +102,12 @@ android {
         enable = true
     }
 
+    // --- PEMBATASAN BAHASA ADIXTREAM (metode baru) ---
+    androidResources {
+        localeFilters += listOf("en", "id", "in")
+    }
+    // ------------------------------------------------
+
     // --- IDENTITAS KEYSTORE ADIXTREAM ---
     signingConfigs {
         create("release") {
@@ -116,20 +122,18 @@ android {
 
     defaultConfig {
         // --- IDENTITAS APLIKASI ADIXTREAM ---
-        applicationId = "com.adixtream.app"
+        applicationId = "com.xstream.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         
-        versionCode = 86
-        versionName = "4.7.9"
+        versionCode = 100
+        versionName = "1.0.1"
 
-        // --- PEMBATASAN BAHASA ADIXTREAM ---
-        resConfigs("en", "id", "in")
-        // -----------------------------------
+        // Baris resConfigs dihapus, diganti dengan androidResources di atas
 
         resValue("string", "commit_hash", getGitCommitHash())
         resValue("bool", "is_prerelease", "false")
-        resValue("string", "app_name", "AdiXtream")
+        resValue("string", "app_name", "XStream")
         resValue("color", "blackBoarder", "#FF000000")
 
         manifestPlaceholders["target_sdk_version"] = libs.versions.targetSdk.get()
