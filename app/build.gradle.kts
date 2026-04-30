@@ -235,7 +235,7 @@ dependencies {
 
     implementation(libs.bundles.nextlib)
 
-    implementation(libs.anime.db)
+ //   implementation(libs.anime.db)
 
     implementation(libs.colorpicker)
     implementation(libs.newpipeextractor)
