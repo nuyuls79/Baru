@@ -6,12 +6,29 @@ object RepoProtector {
         System.loadLibrary("xsecure")
     }
 
+    // Utamakan native – jika gagal, fallback ke XOR (opzional)
     @JvmStatic
-    external fun getPremiumRepoUrl(): String
+    fun getPremiumRepoUrl(): String {
+        return try {
+            nativeGetPremiumRepoUrl()
+        } catch (e: UnsatisfiedLinkError) {
+            RepoDecryptor.getPremiumRepoUrl()
+        }
+    }
 
     @JvmStatic
-    external fun getFreeRepoUrl(): String
+    fun getFreeRepoUrl(): String {
+        return try {
+            nativeGetFreeRepoUrl()
+        } catch (e: UnsatisfiedLinkError) {
+            RepoDecryptor.getFreeRepoUrl()
+        }
+    }
+
+    // Native methods (private)
+    @JvmStatic
+    private external fun nativeGetPremiumRepoUrl(): String
 
     @JvmStatic
-    external fun getFirebaseUrl(): String
+    private external fun nativeGetFreeRepoUrl(): String
 }
