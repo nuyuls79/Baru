@@ -41,7 +41,7 @@ jobs:
       - name: Upload APK ke GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: AdiXtream-Release
+          name: XStream-Release
           # PERBAIKAN DISINI: 
           # Menambahkan /**/ agar dia mencari di dalam folder 'stable' juga
           path: app/build/outputs/apk/**/*.apk
