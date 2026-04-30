@@ -1,55 +1,21 @@
-# ============================================================
-# ATURAN R8 UNTUK ADIXTREAM (PLUGIN-SAFE)
-# ============================================================
+# Add project specific ProGuard rules here.
+# You can control the set of applied configuration files using the
+# proguardFiles setting in build.gradle.kts.
+#
+# For more details, see
+#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# --- Dasar ---
--keepattributes Signature
--keepattributes *Annotation*
+# If your project uses WebView with JS, uncomment the following
+# and specify the fully qualified class name to the JavaScript interface
+# class:
+#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
+#   public *;
+#}
 
-# --- Native JNI ---
--keep class com.lagradost.cloudstream3.utils.RepoProtector {
-    native <methods>;
-    public static *;
-}
+# Uncomment this to preserve the line number information for
+# debugging stack traces.
+#-keepattributes SourceFile,LineNumberTable
 
-# --- Model JSON (Jackson) ---
--keep class com.lagradost.cloudstream3.ui.settings.SettingsGeneral$CustomSite { <fields>; }
--keepclassmembers class * {
-    @com.fasterxml.jackson.annotation.JsonProperty <fields>;
-}
-
-# --- View/Data Binding ---
--keep class * implements androidx.viewbinding.ViewBinding {
-    public static * bind(android.view.View);
-    public static * inflate(android.view.LayoutInflater);
-}
-
-# --- PENTING: Pertahankan SEMUA class dalam package utama ---
--keep class com.lagradost.cloudstream3.** { *; }
-
-# --- Plugin system (jangan disentuh) ---
--keep class com.lagradost.cloudstream3.plugins.** { *; }
--keep class com.lagradost.cloudstream3.APIHolder { *; }
--keep class com.lagradost.cloudstream3.MainAPI { *; }
--keep class com.lagradost.cloudstream3.SearchResponse { *; }
--keep class com.lagradost.cloudstream3.TvType { *; }
--keep class com.lagradost.cloudstream3.DubStatus { *; }
-
-# --- Library pihak ketiga yang mungkin diakses lewat refleksi ---
--keep class org.jsoup.** { *; }
--keep class org.mozilla.javascript.** { *; }
-
-# --- Abaikan class yang hilang (java.beans, javax.script, dll.) ---
--dontwarn com.google.re2j.**
--dontwarn java.beans.**
--dontwarn javax.script.**
--dontwarn okhttp3.**
--dontwarn okio.**
-
-# --- Jangan hapus class yang dipanggil dengan Class.forName ---
--keepclassmembers class * {
-    *** forName(...);
-}
-
-# --- Opsional: Abaikan warning agar build tidak gagal ---
--ignorewarnings
+# If you keep the line number information, uncomment this to
+# hide the original source file name.
+#-renamesourcefileattribute SourceFile
