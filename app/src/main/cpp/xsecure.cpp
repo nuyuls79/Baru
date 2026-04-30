@@ -69,4 +69,4 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_getFreeRepoUrl(JNIEnv* env, 
     return env->NewStringUTF(decoded.c_str());
 }
 
-
+} // extern "C"
