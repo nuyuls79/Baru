@@ -27,7 +27,6 @@ import com.lagradost.cloudstream3.network.initClient
 import com.lagradost.cloudstream3.ui.BasePreferenceFragmentCompat
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
-import com.lagradost.cloudstream3.ui.settings.Globals.beneneCount
 import com.lagradost.cloudstream3.ui.settings.SettingsFragment.Companion.getPref
 import com.lagradost.cloudstream3.ui.settings.SettingsFragment.Companion.hideOn
 import com.lagradost.cloudstream3.ui.settings.SettingsFragment.Companion.setPaddingBottom
@@ -69,7 +68,7 @@ fun Pair<String, String>.nameNextToFlagEmoji(): String {
     // fallback to [A][A] -> [?] question mak flag
     val flag = SubtitleHelper.getFlagFromIso(this.second) ?: "\ud83c\udde6\ud83c\udde6"
 
-    return "$flag\u00a0${this.first}" // \u00a0 non-breaking space
+    return "$flag\u00a0${this.first}" // \u00a0 non-breaking space
 }
 
 class SettingsGeneral : BasePreferenceFragmentCompat() {
@@ -113,7 +112,7 @@ class SettingsGeneral : BasePreferenceFragmentCompat() {
         getPref(R.string.anim)?.isVisible = false
         getPref(R.string.discord)?.isVisible = false
         getPref(R.string.cs3wiki)?.isVisible = false
-        
+
         // --- MODIFIKASI ADIXTREAM: Menyembunyikan Disclaimer & Donasi ---
         getPref(R.string.legal_notice_key)?.isVisible = false
         getPref(R.string.benene_count)?.isVisible = false
@@ -246,14 +245,8 @@ class SettingsGeneral : BasePreferenceFragmentCompat() {
             return@setOnPreferenceClickListener true
         }
 
-        getPref(R.string.legal_notice_key)?.setOnPreferenceClickListener {
-            val builder: AlertDialog.Builder =
-                AlertDialog.Builder(it.context, R.style.AlertDialogCustom)
-            builder.setTitle(R.string.legal_notice)
-            builder.setMessage(R.string.legal_notice_text)
-            builder.show()
-            return@setOnPreferenceClickListener true
-        }
+        // Blok legal_notice_key dan benene_count telah dihapus karena resource-nya tidak ada
+        // dan kita ingin menyembunyikannya.
 
         getPref(R.string.dns_key)?.setOnPreferenceClickListener {
             val prefNames = resources.getStringArray(R.array.dns_pref)
@@ -339,25 +332,6 @@ class SettingsGeneral : BasePreferenceFragmentCompat() {
             return@setOnPreferenceClickListener true
         }
 
-        try {
-            getPref(R.string.benene_count)?.let { pref ->
-                // Mengubah teks ringkasan (summary) di bawah judul tombol
-                pref.summary = "Dukung saya melalui Saweria" 
-
-                pref.setOnPreferenceClickListener {
-                    try {
-                        // Membuka tautan Saweria menggunakan browser bawaan HP
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                        intent.data = Uri.parse("https://saweria.co/michat88")
-                        startActivity(intent)
-                    } catch (e: Exception) {
-                        logError(e)
-                    }
-                    return@setOnPreferenceClickListener true
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        // Blok benene_count dan Saweria sepenuhnya dihapus karena tidak ada resource dan ingin dihilangkan.
     }
 }
