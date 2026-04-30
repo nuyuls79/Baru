@@ -148,13 +148,18 @@ android {
         buildConfigField("String", "SIMKL_CLIENT_SECRET", "\"d8cf8e1b79bae9b2f77f0347d6384a62f1a8d802abdd73d9aa52bf6a848532ba\"")
         
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // --- NDK ABIs (opsional tapi disarankan, biar app tidak membengkak dengan lib native semua arsitektur) ---
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+        }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
             isDebuggable = false
-            isMinifyEnabled = false 
+            isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -195,6 +200,19 @@ android {
         buildConfig = true
         resValues = true
     }
+
+    // ==================== NATIVE BUILD (XSECURE) ====================
+    // Konfigurasi untuk mengkompilasi kode C++ (xsecure.cpp)
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    // NDK version yang digunakan (sesuaikan dengan yang tersedia di sistem)
+    ndkVersion = "27.0.12077973"
+    // ================================================================
 
     // [TAMBAHAN OPTIMASI 2]: Mengaktifkan kompresi lama untuk file JNI (.so) agar ukuran APK jauh lebih kecil
     packaging {
