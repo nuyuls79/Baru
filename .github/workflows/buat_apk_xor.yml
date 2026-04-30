@@ -1,4 +1,4 @@
-name: Build Release (FINAL Patch-XOR)
+name: Build Release (FINAL FIX)
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - main
+      - Patch-obfuscation   # tambahkan branch yang kamu pakai
       - Patch-XOR
 
 jobs:
@@ -38,17 +39,13 @@ jobs:
           ALIAS: ${{ secrets.ALIAS }}
           KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          # === TAMBAHAN ADIXTREAM: SECURITY REPO PROTECTOR (LEVEL 2 - XOR) ===
-          # Menyuntikkan Kunci Rahasia dan Base64 ke dalam sistem Gradle
+          # XOR & Repo (tambahan untuk enkripsi di build)
           XOR_SECRET_KEY: ${{ secrets.XOR_SECRET_KEY }}
-          PREMIUM_REPO_ENCODED: ${{ secrets.PREMIUM_REPO_ENCODED }}
-          FREE_REPO_ENCODED: ${{ secrets.FREE_REPO_ENCODED }}
-          FIREBASE_URL_ENCODED: ${{ secrets.FIREBASE_URL_ENCODED }}
-          # ===================================================================
+          PREMIUM_REPO: ${{ secrets.PREMIUM_REPO }}
+          FREE_REPO: ${{ secrets.FREE_REPO }}
 
       - name: Upload APK ke GitHub
         uses: actions/upload-artifact@v4
         with:
           name: XStream-Release
-          # Mencari semua file apk di dalam folder output (termasuk folder stable)
           path: app/build/outputs/apk/**/*.apk
