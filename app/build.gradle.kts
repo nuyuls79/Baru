@@ -97,13 +97,13 @@ android {
         }
     }
 
+    // --- IDENTITAS KEYSTORE ADIXTREAM ---
     signingConfigs {
         create("release") {
-            val envKeystorePath = System.getenv("KEYSTORE_PATH")
-            storeFile = if (envKeystorePath != null) file(envKeystorePath) else file("keystore.jks")
-            storePassword = System.getenv("KEY_STORE_PASSWORD") ?: "161105"
-            keyAlias = System.getenv("ALIAS") ?: "adixtream"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "161105"
+            storeFile = file("../release.keystore") // karena file di root proyek
+            storePassword = "Dani12345"
+            keyAlias = "waduk"
+            keyPassword = "Dani12345"
         }
     }
 
