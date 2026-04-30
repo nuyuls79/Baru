@@ -329,16 +329,20 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
             Locale.getDefault()
         ).apply { timeZone = TimeZone.getTimeZone("UTC")
         }.format(Date(BuildConfig.BUILD_DATE)).replace("UTC", "")
-
+        
         binding.appVersion.text = appVersion
         binding.buildDate.text = buildTimestamp
-
+        
         // ====================================================================
         // TAMBAHKAN STATUS PREMIUM DI BAWAH INFORMASI VERSI
         // ====================================================================
-        // Cegah penambahan view berulang
         if (binding.root.findViewWithTag<View>("premium_status_tag") == null) {
-            val parentLayout = binding.buildDate.parent as? ViewGroup
+            var parentLayout = binding.buildDate.parent as? ViewGroup
+            // Jika parent adalah LinearLayout horizontal, naik ke parent berikutnya (vertikal)
+            if (parentLayout is android.widget.LinearLayout && parentLayout.orientation == android.widget.LinearLayout.HORIZONTAL) {
+                parentLayout = parentLayout.parent as? ViewGroup
+            }
+        
             if (parentLayout != null) {
                 val premiumStatusView = TextView(requireContext()).apply {
                     tag = "premium_status_tag"
@@ -349,28 +353,24 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
                     gravity = Gravity.CENTER
                     textSize = 14f
                     setPadding(0, 8.toPx, 0, 0)
-                    // Warna default (akan diubah)
-                    setTextColor(Color.WHITE)
                 }
-
+        
                 val isPremium = PremiumManager.isPremium(requireContext())
                 if (isPremium) {
                     val expiryDate = PremiumManager.getExpiryDateString(requireContext())
                     premiumStatusView.text = "Status Langganan: Aktif s/d $expiryDate"
-                    premiumStatusView.setTextColor(Color.parseColor("#4CAF50")) // hijau
+                    premiumStatusView.setTextColor(Color.parseColor("#4CAF50"))
                 } else {
                     premiumStatusView.text = "Status Langganan: Gratis"
-                    premiumStatusView.setTextColor(Color.parseColor("#F44336")) // merah
+                    premiumStatusView.setTextColor(Color.parseColor("#F44336"))
                 }
-
+        
                 parentLayout.addView(premiumStatusView)
             }
         }
         // ====================================================================
-
+        
         binding.appVersionInfo.setOnLongClickListener {
             clipboardHelper(txt(R.string.extension_version), "$appVersion $commitInfo $buildTimestamp")
             true
         }
-    }
-}
