@@ -296,7 +296,7 @@ object PremiumDialogManager {
         btnAdminRow.addView(textAdmin)
         btnAdminRow.addView(iconAdmin)
 
-        // Logika Klik Unlock (ONLINE SYSTEM)
+        // Logika Klik Unlock (ONLINE SYSTEM) – DIPERBAIKI
         btnUnlock.setOnClickListener {
             val code = inputCode.text.toString().trim().uppercase()
             if (code.isEmpty()) {
@@ -308,31 +308,32 @@ object PremiumDialogManager {
             btnUnlock.text = "MEMVERIFIKASI..."
             btnUnlock.isEnabled = false
 
-            PremiumManager.activatePremiumWithCode(activity, code, deviceIdVal) { isSuccess, message ->
-                // Kembalikan tombol seperti semula setelah server menjawab
-                btnUnlock.isEnabled = true
-                btnUnlock.text = "UNLOCK NOW"
+            // Panggil fungsi sinkron (sesuai definisi asli)
+            val success = PremiumManager.activatePremiumWithCode(activity, code, deviceIdVal)
+
+            // Kembalikan tombol seperti semula
+            btnUnlock.isEnabled = true
+            btnUnlock.text = "UNLOCK NOW"
                 
-                if (isSuccess) {
-                    (btnUnlock.tag as? Dialog)?.dismiss()
-                    val expiryDate = PremiumManager.getExpiryDateString(activity)
+            if (success) {
+                (btnUnlock.tag as? Dialog)?.dismiss()
+                val expiryDate = PremiumManager.getExpiryDateString(activity)
                     
-                    AlertDialog.Builder(activity)
-                        .setTitle("✅ PREMIUM DIAKTIFKAN")
-                        .setMessage("Terima kasih telah berlangganan!\n\n📅 Masa Aktif: $expiryDate\n\nAplikasi akan direstart...")
-                        .setCancelable(false)
-                        .setPositiveButton("OK") { _, _ ->
-                            val packageManager = activity.packageManager
-                            val intent = packageManager.getLaunchIntentForPackage(activity.packageName)
-                            val componentName = intent?.component
-                            val mainIntent = Intent.makeRestartActivityTask(componentName)
-                            activity.startActivity(mainIntent)
-                            Runtime.getRuntime().exit(0)
-                        }
-                        .show()
-                } else {
-                    Toast.makeText(activity, "⛔ $message", Toast.LENGTH_LONG).show()
-                }
+                AlertDialog.Builder(activity)
+                    .setTitle("✅ PREMIUM DIAKTIFKAN")
+                    .setMessage("Terima kasih telah berlangganan!\n\n📅 Masa Aktif: $expiryDate\n\nAplikasi akan direstart...")
+                    .setCancelable(false)
+                    .setPositiveButton("OK") { _, _ ->
+                        val packageManager = activity.packageManager
+                        val intent = packageManager.getLaunchIntentForPackage(activity.packageName)
+                        val componentName = intent?.component
+                        val mainIntent = Intent.makeRestartActivityTask(componentName)
+                        activity.startActivity(mainIntent)
+                        Runtime.getRuntime().exit(0)
+                    }
+                    .show()
+            } else {
+                Toast.makeText(activity, "⛔ Gagal mengaktifkan kode. Pastikan kode benar dan coba lagi.", Toast.LENGTH_LONG).show()
             }
         }
 
