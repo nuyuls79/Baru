@@ -21,7 +21,7 @@
 #-renamesourcefileattribute SourceFile
 
 # ============================================================
-# ADIXTREAM CUSTOM PROGUARD RULES
+# ATURAN R8 UNTUK ADIXTREAM
 # ============================================================
 
 # === 1. Aturan umum untuk atribut dan anotasi ===
@@ -29,14 +29,12 @@
 -keepattributes *Annotation*
 
 # === 2. Lindungi Native JNI (RepoProtector / xsecure) ===
-# Jangan obfuscate class dan method yang terhubung ke C++
 -keep class com.lagradost.cloudstream3.utils.RepoProtector {
     native <methods>;
     public static *;
 }
 
 # === 3. Lindungi Model Data JSON (Jackson / Gson) ===
-# Agar @JsonProperty tetap bekerja setelah di-obfuscate
 -keep class com.lagradost.cloudstream3.ui.settings.SettingsGeneral$CustomSite { <fields>; }
 -keepclassmembers class * {
     @com.fasterxml.jackson.annotation.JsonProperty <fields>;
@@ -48,11 +46,14 @@
     public static * inflate(android.view.LayoutInflater);
 }
 
-# === 5. Hindari penghapusan resource string format ===
--keepclassmembers class * {
-    native <methods>;
-}
+# === 5. Abaikan class yang tidak ada di Android (java.beans, javax.script, dll.) ===
+-dontwarn com.google.re2j.**
+-dontwarn java.beans.**
+-dontwarn javax.script.**
 
-# === 6. Peringatan untuk library eksternal (opsional) ===
+# === 6. Opsional: Abaikan warning agar build tidak gagal ===
+-ignorewarnings
+
+# === 7. Library eksternal ===
 -dontwarn okhttp3.**
 -dontwarn okio.**
