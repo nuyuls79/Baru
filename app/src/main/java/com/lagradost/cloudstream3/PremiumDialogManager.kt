@@ -29,9 +29,9 @@ object PremiumDialogManager {
         // --- EXPIRY CHECK: cek masa berlaku premium ---
         if (PremiumManager.isPremium(activity)) {
             val expiryDate = PremiumManager.getExpiryDateString(activity)
-            // Asumsikan ada fungsi isExpired() yang mengembalikan Boolean.
-            // Jika tidak ada, bisa diganti: val isExpired = PremiumManager.getExpiryDateMillis(activity) < System.currentTimeMillis()
-            val isExpired = PremiumManager.isExpired(activity)
+            // Gunakan perbandingan langsung tanpa memanggil isExpired()
+            val expiryMillis = PremiumManager.getExpiryDateMillis(activity)
+            val isExpired = expiryMillis < System.currentTimeMillis()
 
             if (isExpired) {
                 // Masa aktif sudah habis – tampilkan dialog perpanjangan
@@ -39,7 +39,6 @@ object PremiumDialogManager {
                     .setTitle("⏳ PREMIUM TELAH BERAKHIR")
                     .setMessage("Masa aktif Anda sudah habis pada:\n$expiryDate\n\nSilakan lakukan perpanjangan.")
                     .setPositiveButton("Perpanjang") { _, _ ->
-                        // Panggil ulang dialog unlock untuk memasukkan kode baru
                         showPremiumUnlockDialog(activity)
                     }
                     .setNegativeButton("Tutup", null)

@@ -106,6 +106,12 @@ object PremiumManager {
         return if (date == 0L) "Non-Premium" else SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(date))
     }
 
+    // --- DITAMBAHKAN: fungsi untuk mengambil Expiry dalam millis ---
+    fun getExpiryDateMillis(context: Context): Long {
+        return PreferenceManager.getDefaultSharedPreferences(context).getLong(PREF_EXPIRY_DATE, 0)
+    }
+    // ----------------------------------------------------------------
+
     // Fungsi MD5 Helper yang dioptimalkan
     private fun md5(str: String): String {
         val digest = MessageDigest.getInstance("MD5")
