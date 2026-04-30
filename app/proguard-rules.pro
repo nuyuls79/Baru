@@ -1,62 +1,55 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.kts.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
 # ============================================================
-# ATURAN R8 UNTUK ADIXTREAM (FIXED)
+# ATURAN R8 UNTUK ADIXTREAM (PLUGIN-SAFE)
 # ============================================================
 
-# === 1. Aturan umum untuk atribut dan anotasi ===
+# --- Dasar ---
 -keepattributes Signature
 -keepattributes *Annotation*
 
-# === 2. Lindungi Native JNI (RepoProtector / xsecure) ===
+# --- Native JNI ---
 -keep class com.lagradost.cloudstream3.utils.RepoProtector {
     native <methods>;
     public static *;
 }
 
-# === 3. Lindungi Model Data JSON (Jackson / Gson) ===
+# --- Model JSON (Jackson) ---
 -keep class com.lagradost.cloudstream3.ui.settings.SettingsGeneral$CustomSite { <fields>; }
 -keepclassmembers class * {
     @com.fasterxml.jackson.annotation.JsonProperty <fields>;
 }
 
-# === 4. Lindungi View Binding & Data Binding ===
+# --- View/Data Binding ---
 -keep class * implements androidx.viewbinding.ViewBinding {
     public static * bind(android.view.View);
     public static * inflate(android.view.LayoutInflater);
 }
 
-# === 5. PENTING: Jangan obfuscate package utama (agar plugin & refleksi tetap bekerja) ===
+# --- PENTING: Pertahankan SEMUA class dalam package utama ---
 -keep class com.lagradost.cloudstream3.** { *; }
 
-# === 6. Abaikan class yang tidak ada di Android (java.beans, javax.script, dll.) ===
+# --- Plugin system (jangan disentuh) ---
+-keep class com.lagradost.cloudstream3.plugins.** { *; }
+-keep class com.lagradost.cloudstream3.APIHolder { *; }
+-keep class com.lagradost.cloudstream3.MainAPI { *; }
+-keep class com.lagradost.cloudstream3.SearchResponse { *; }
+-keep class com.lagradost.cloudstream3.TvType { *; }
+-keep class com.lagradost.cloudstream3.DubStatus { *; }
+
+# --- Library pihak ketiga yang mungkin diakses lewat refleksi ---
+-keep class org.jsoup.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+
+# --- Abaikan class yang hilang (java.beans, javax.script, dll.) ---
 -dontwarn com.google.re2j.**
 -dontwarn java.beans.**
 -dontwarn javax.script.**
-
-# === 7. Library eksternal ===
 -dontwarn okhttp3.**
 -dontwarn okio.**
 
-# === 8. Opsional: Abaikan warning agar build tidak gagal ===
+# --- Jangan hapus class yang dipanggil dengan Class.forName ---
+-keepclassmembers class * {
+    *** forName(...);
+}
+
+# --- Opsional: Abaikan warning agar build tidak gagal ---
 -ignorewarnings
