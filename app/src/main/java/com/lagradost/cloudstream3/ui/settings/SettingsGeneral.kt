@@ -113,7 +113,10 @@ class SettingsGeneral : BasePreferenceFragmentCompat() {
         getPref(R.string.anim)?.isVisible = false
         getPref(R.string.discord)?.isVisible = false
         getPref(R.string.cs3wiki)?.isVisible = false
-        // ---------------------------------------------------------------------
+        
+        // --- MODIFIKASI ADIXTREAM: Menyembunyikan Disclaimer & Donasi ---
+        getPref(R.string.legal_notice_key)?.isVisible = false
+        getPref(R.string.benene_count)?.isVisible = false
 
         fun getCurrent(): MutableList<CustomSite> {
             return getKey<Array<CustomSite>>(USER_PROVIDER_API)?.toMutableList()
