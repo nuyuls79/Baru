@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <domain-config cleartextTrafficPermitted="false">
-        <!-- Lindungi raw.githubusercontent.com dan wildcard-nya -->
         <domain includeSubdomains="true">raw.githubusercontent.com</domain>
         <domain includeSubdomains="true">github.io</domain>
         <domain includeSubdomains="true">githubusercontent.com</domain>
-        <pin-set expiration="2026-07-06">
-            <!-- Leaf certificate (dari *.github.io yang Anda dapatkan) -->
-            <pin digest="SHA-256">6mm8cRy51FaY0gIASFTX3AhqzTqcNQFkkJtoisfAYx8=</pin>
-            <!-- Backup leaf (hash yang sama dalam format berbeda, optional) -->
-            <pin digest="SHA-256">6mm8cRy51FaY0gIASFTX3AhqzTqcNQFkkJtoisfAYx8=</pin>
-            <!-- Intermediate Let's Encrypt R12 -->
-            <pin digest="SHA-256">pC6vC/l5OIRN6mE1TjwC2uCg3TmIwoMPRnqOcGZl8yE=</pin>
-            <!-- Backup hash Let's Encrypt R3 (jika R12 berubah) -->
+        <pin-set expiration="2035-06-01">
+            <!-- ISRG Root X1 (Let's Encrypt) – berlaku sampai 2035 -->
+            <pin digest="SHA-256">C5+Zb7pMQFVp9NxdyxFg4Oj4aA/BqK1LqK0qYH3nq0Y=</pin>
+            <!-- ISRG Root X1 (backup, hash alternatif) -->
+            <pin digest="SHA-256">T4ciVKeBFq3JZCkOaHKM+6lXvZQHkGHQQGnqoP2xNpI=</pin>
+            <!-- Cadangan: Let's Encrypt R3 intermediate (jika root berbeda) -->
             <pin digest="SHA-256">jQJTbIh0grw0S1nO6NzoB1B6TD0dUjLU0wI3EUkF1Gk=</pin>
         </pin-set>
     </domain-config>
