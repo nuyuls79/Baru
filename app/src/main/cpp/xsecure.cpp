@@ -47,8 +47,15 @@ std::string base64_decode(const std::string &encoded_string) {
 extern "C" {
 
 // Simpan URL ter-enkode di sini (aman di native lib)
+static const char* ENCODED_FIREBASE_URL = "aHR0cHM6Ly9hZGl4dHJlYW0tcHJlbWl1bS1kZWZhdWx0LXJ0ZGIuYXNpYS1zb3V0aGVhc3QxLmZpcmViYXNlZGF0YWJhc2UuYXBwLw==";
 static const char* ENCODED_PREMIUM_REPO = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24=";
 static const char* ENCODED_FREE_REPO    = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg==";
+
+JNIEXPORT jstring JNICALL
+Java_com_lagradost_cloudstream3_utils_RepoProtector_getFirebaseUrl(JNIEnv* env, jclass) {
+    std::string decoded = base64_decode(ENCODED_FIREBASE_URL);
+    return env->NewStringUTF(decoded.c_str());
+}
 
 JNIEXPORT jstring JNICALL
 Java_com_lagradost_cloudstream3_utils_RepoProtector_getPremiumRepoUrl(JNIEnv* env, jclass) {
@@ -62,4 +69,4 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_getFreeRepoUrl(JNIEnv* env, 
     return env->NewStringUTF(decoded.c_str());
 }
 
-} // extern "C"
+
