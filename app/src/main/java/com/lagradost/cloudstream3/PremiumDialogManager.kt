@@ -25,6 +25,38 @@ import com.lagradost.cloudstream3.utils.UIHelper.toPx
 object PremiumDialogManager {
 
     fun showPremiumUnlockDialog(activity: Activity) {
+        // ==========================================
+        // --- EXPIRY CHECK: cek masa berlaku premium ---
+        if (PremiumManager.isPremium(activity)) {
+            val expiryDate = PremiumManager.getExpiryDateString(activity)
+            // Asumsikan ada fungsi isExpired() yang mengembalikan Boolean.
+            // Jika tidak ada, bisa diganti: val isExpired = PremiumManager.getExpiryDateMillis(activity) < System.currentTimeMillis()
+            val isExpired = PremiumManager.isExpired(activity)
+
+            if (isExpired) {
+                // Masa aktif sudah habis – tampilkan dialog perpanjangan
+                AlertDialog.Builder(activity)
+                    .setTitle("⏳ PREMIUM TELAH BERAKHIR")
+                    .setMessage("Masa aktif Anda sudah habis pada:\n$expiryDate\n\nSilakan lakukan perpanjangan.")
+                    .setPositiveButton("Perpanjang") { _, _ ->
+                        // Panggil ulang dialog unlock untuk memasukkan kode baru
+                        showPremiumUnlockDialog(activity)
+                    }
+                    .setNegativeButton("Tutup", null)
+                    .show()
+                return
+            } else {
+                // Premium masih aktif – cukup beri tahu pengguna
+                AlertDialog.Builder(activity)
+                    .setTitle("✅ PREMIUM AKTIF")
+                    .setMessage("Anda sudah memiliki akses Premium.\n\n📅 Masa Aktif: $expiryDate")
+                    .setPositiveButton("OK", null)
+                    .show()
+                return
+            }
+        }
+        // ==========================================
+
         val isTv = isLayout(TV or EMULATOR)
 
         // Tema Gelap khas Netflix
