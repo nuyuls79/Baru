@@ -374,3 +374,5 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
             clipboardHelper(txt(R.string.extension_version), "$appVersion $commitInfo $buildTimestamp")
             true
         }
+    } // <--- PENUTUP onBindingCreated
+} // <--- PENUTUP class SettingsFragment
