@@ -4,16 +4,16 @@ import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import java.util.Base64
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.dokka)
-    alias(libs.plugins.kotlin.android)
 }
 
 val javaTarget = JvmTarget.fromTarget(libs.versions.jvmTarget.get())
 
-// === 1. TAMBAHAN DARI CLOUDSTREAM: TUGAS PEMBUAT GIT-HASH.TXT ===
+// === TUGAS PEMBUAT GIT-HASH.TXT ===
 abstract class GenerateGitHashTask : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
@@ -54,9 +54,7 @@ val generateGitHash = tasks.register<GenerateGitHashTask>("generateGitHash") {
     headsDir.set(gitDir.dir("refs/heads"))
     outputDir.set(layout.buildDirectory.dir("generated/git"))
 }
-// ================================================================
 
-// (Fungsi lama AdiXtream tetap dipertahankan untuk berjaga-jaga jika masih dipanggil)
 fun getGitCommitHash(): String {
     return try {
         val headFile = file("${project.rootDir}/.git/HEAD")
@@ -81,13 +79,15 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
-    // [TAMBAHAN OPTIMASI 1]: Menghapus metadata library bawaan Google agar ukuran APK/AAB lebih bersih
+    androidResources {
+        localeFilters += listOf("en", "id", "in")
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
     }
 
-    // === 2. TAMBAHAN DARI CLOUDSTREAM: MENYIMPAN FILE KE ASSETS ===
     androidComponents {
         onVariants { variant ->
             variant.sources.assets?.addGeneratedSourceDirectory(
@@ -96,40 +96,26 @@ android {
             )
         }
     }
-    // ==============================================================
 
-    viewBinding {
-        enable = true
-    }
-
-    // --- PEMBATASAN BAHASA ADIXTREAM (metode baru) ---
-    androidResources {
-        localeFilters += listOf("en", "id", "in")
-    }
-    // ------------------------------------------------
-
-    // --- IDENTITAS KEYSTORE ADIXTREAM ---
     signingConfigs {
         create("release") {
-            storeFile = file("../release.keystore") // karena file di root proyek
-            storePassword = "Dani12345"
-            keyAlias = "waduk"
-            keyPassword = "Dani12345"
+            val envKeystorePath = System.getenv("KEYSTORE_PATH")
+            storeFile = if (envKeystorePath != null) file(envKeystorePath) else file("keystore.jks")
+            storePassword = System.getenv("KEY_STORE_PASSWORD") ?: "161105"
+            keyAlias = System.getenv("ALIAS") ?: "adixtream"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "161105"
         }
     }
 
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        // --- IDENTITAS APLIKASI ADIXTREAM ---
         applicationId = "com.xstream.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         
-        versionCode = 100
-        versionName = "1.0.1"
-
-        // Baris resConfigs dihapus, diganti dengan androidResources di atas
+        versionCode = 102
+        versionName = "1.0.2"
 
         resValue("string", "commit_hash", getGitCommitHash())
         resValue("bool", "is_prerelease", "false")
@@ -140,26 +126,38 @@ android {
 
         val localProperties = gradleLocalProperties(rootDir, project.providers)
 
+        // === ENKRIPSI XOR HANYA UNTUK REPO ===
+        val xorKey = (localProperties.getProperty("XOR_SECRET_KEY")
+            ?: System.getenv("XOR_SECRET_KEY") ?: "DefaultKeyAman").trim()
+
+        val premiumRepo = (localProperties.getProperty("PREMIUM_REPO")
+            ?: System.getenv("PREMIUM_REPO") ?: "").trim()
+        val freeRepo = (localProperties.getProperty("FREE_REPO")
+            ?: System.getenv("FREE_REPO") ?: "").trim()
+
+        // Obfuscated key
+        val obfuscatedKey = xorKey.map { it.code + 7 }.joinToString(", ")
+        buildConfigField("int[]", "OBFUSCATED_KEY", "new int[]{$obfuscatedKey}")
+
+        // Enkripsi XOR untuk repo
+        buildConfigField("String", "PREMIUM_REPO_XOR", "\"${xorEncrypt(premiumRepo, xorKey)}\"")
+        buildConfigField("String", "FREE_REPO_XOR", "\"${xorEncrypt(freeRepo, xorKey)}\"")
+        // ===================================
+
         buildConfigField("long", "BUILD_DATE", "${System.currentTimeMillis()}")
         buildConfigField("String", "APP_VERSION", "\"$versionName\"")
         
-        // Kunci API Simkl resmi milik AdiXtream
         buildConfigField("String", "SIMKL_CLIENT_ID", "\"db13c9a72e036f717c3a85b13cdeb31fa884c8f4991e43695f7b6477374e35b8\"")
         buildConfigField("String", "SIMKL_CLIENT_SECRET", "\"d8cf8e1b79bae9b2f77f0347d6384a62f1a8d802abdd73d9aa52bf6a848532ba\"")
         
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // --- NDK ABIs (opsional tapi disarankan, biar app tidak membengkak dengan lib native semua arsitektur) ---
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
-        }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
             isDebuggable = false
-            isMinifyEnabled = false
+            isMinifyEnabled = false 
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -199,22 +197,9 @@ android {
     buildFeatures {
         buildConfig = true
         resValues = true
+        viewBinding = true 
     }
 
-    // ==================== NATIVE BUILD (XSECURE) ====================
-    // Konfigurasi untuk mengkompilasi kode C++ (xsecure.cpp)
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
-
-    // NDK version yang digunakan (sesuaikan dengan yang tersedia di sistem)
-    ndkVersion = "27.0.12077973"
-    // ================================================================
-
-    // [TAMBAHAN OPTIMASI 2]: Mengaktifkan kompresi lama untuk file JNI (.so) agar ukuran APK jauh lebih kecil
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -250,6 +235,8 @@ dependencies {
 
     implementation(libs.bundles.nextlib)
 
+    implementation(libs.anime.db)
+
     implementation(libs.colorpicker)
     implementation(libs.newpipeextractor)
     implementation(libs.juniversalchardet)
@@ -259,9 +246,7 @@ dependencies {
     implementation(libs.overlappingpanels)
     implementation(libs.biometric)
     
-    // === TAMBAHAN ADIXTREAM: SECURITY CRYPTO (ANTI-HACK) ===
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    // =======================================================
 
     implementation(libs.previewseekbar.media3)
     implementation(libs.qrcode.kotlin)
@@ -280,13 +265,12 @@ dependencies {
     implementation(libs.work.runtime.ktx)
     implementation(libs.nicehttp)
 
-    // [MODIFIKASI: Mengikuti commit 86cca03 untuk memperbaiki bug logging]
     implementation(project(":library"))
 }
 
 tasks.register<Jar>("androidSourcesJar") {
     archiveClassifier.set("sources")
-    from(android.sourceSets.getByName("main").java.srcDirs)
+    from(android.sourceSets.getByName("main").java.directories)
 }
 
 tasks.register<Copy>("copyJar") {
@@ -315,7 +299,6 @@ tasks.withType<KotlinJvmCompile> {
     compilerOptions {
         jvmTarget.set(javaTarget)
         jvmDefault.set(JvmDefaultMode.ENABLE)
-        // [MODIFIKASI: Menambahkan InternalAPI sesuai commit 86cca03]
         optIn.addAll(
             "com.lagradost.cloudstream3.InternalAPI",
             "com.lagradost.cloudstream3.Prerelease"
@@ -327,7 +310,7 @@ tasks.withType<KotlinJvmCompile> {
 dokka {
     moduleName = "App"
     dokkaSourceSets {
-        main {
+        configureEach {
             analysisPlatform = KotlinPlatform.JVM
             documentedVisibilities(
                 VisibilityModifier.Public,
@@ -335,9 +318,29 @@ dokka {
             )
             sourceLink {
                 localDirectory = file("..")
-                remoteUrl("https://github.com/michat88/AdiXtream/tree/master")
+                remoteUrl("https://github.com/nuyuls79/XStream2/tree/master")
                 remoteLineSuffix = "#L"
             }
         }
     }
+}
+
+// === FUNGSI ENKRIPSI XOR OTOMATIS SAAT BUILD ===
+fun xorEncrypt(input: String, keyString: String): String {
+    if (input.isEmpty() || keyString.isEmpty()) return ""
+    
+    // 1. Encode plain URL ke Base64
+    val base64String = Base64.getEncoder().encodeToString(input.toByteArray(Charsets.UTF_8))
+    
+    // 2. XOR hasil Base64 dengan kunci
+    val key = keyString.toByteArray(Charsets.UTF_8)
+    val inputBytes = base64String.toByteArray(Charsets.UTF_8)
+    val outputBytes = ByteArray(inputBytes.size)
+    
+    for (i in inputBytes.indices) {
+        outputBytes[i] = (inputBytes[i].toInt() xor key[i % key.size].toInt()).toByte()
+    }
+    
+    // 3. Konversi ke string hex
+    return outputBytes.joinToString("") { "%02x".format(it) }
 }
