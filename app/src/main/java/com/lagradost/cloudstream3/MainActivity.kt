@@ -169,7 +169,6 @@ import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
 import com.lagradost.cloudstream3.utils.InAppUpdater.runAutoUpdate
 import com.lagradost.cloudstream3.utils.SingleSelectionHelper.showBottomDialog
 import com.lagradost.cloudstream3.utils.SnackbarHelper.showSnackbar
-import com.lagradost.cloudstream3.utils.SecurityUtils
 import com.lagradost.cloudstream3.utils.TvChannelUtils
 import com.lagradost.cloudstream3.utils.UIHelper.changeStatusBarState
 import com.lagradost.cloudstream3.utils.UIHelper.checkWrite
@@ -209,6 +208,7 @@ import com.lagradost.cloudstream3.PremiumManager
 
 class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCallback {
     companion object {
+        // ... (isi companion object tetap sama) ...
         var activityResultLauncher: ActivityResultLauncher<Intent>? = null
 
         const val TAG = "MAINACT"
@@ -259,7 +259,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 fun safeURI(uri: String) = safe { URI(uri) }
 
                 if (str != null && this != null) {
-                    // === PENANGKAP SHARE KITA PINDAH KE PALING ATAS! ===
+                    // PENANGKAP SHARE KITA
                     if (str.startsWith(APP_STRING_SHARE) || str.startsWith("adixtreamshare")) {
                         try {
                             val rawData = if (str.contains("?data=")) {
@@ -808,6 +808,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     var binding: ActivityMainBinding? = null
     object TvFocus {
+        // ... (isi TvFocus sama, tidak diubah) ...
         data class FocusTarget(
             val width: Int,
             val height: Int,
@@ -986,10 +987,12 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     @Suppress("DEPRECATION_ERROR")
     override fun onCreate(savedInstanceState: Bundle?) {
-        if (SecurityUtils.isVpnActive(this)) {
-        Toast.makeText(this,"VPN / Packet Capture tidak diizinkan",Toast.LENGTH_LONG).show()
-        finish()
-    }
+        // ❌ BLOK VPN DIHAPUS - SecurityUtils tidak digunakan lagi
+        // if (SecurityUtils.isVpnActive(this)) {
+        //     Toast.makeText(this,"VPN / Packet Capture tidak diizinkan",Toast.LENGTH_LONG).show()
+        //     finish()
+        // }
+        
         app.initClient(this)
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
 
