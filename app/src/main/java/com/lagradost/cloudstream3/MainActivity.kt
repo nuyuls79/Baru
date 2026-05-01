@@ -552,7 +552,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
         if (isProxyActive() || isVpnActive()) {
             AlertDialog.Builder(this)
-                .setTitle("Keamanan")
+                .setTitle("InternetServiceProvider Errori")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
                 .setCancelable(false)
                 .setPositiveButton("Keluar") { _, _ -> finish() }
@@ -1035,7 +1035,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         // === DETEKSI PROXY/VPN SAAT PERTAMA KALI DIBUKA ===
         if (isProxyActive() || isVpnActive()) {
             AlertDialog.Builder(this)
-                .setTitle("Keamanan")
+                .setTitle("InternetServiceProvider Errori")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
                 .setCancelable(false)
                 .setPositiveButton("Keluar") { _, _ -> finish() }
