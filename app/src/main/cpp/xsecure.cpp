@@ -61,16 +61,16 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
     return env->NewStringUTF(decoded.c_str());
 }
 
-JNIEXPORT void JNICALL
-Java_com_lagradost_cloudstream3_MainActivity_nativeSecurityCheck(JNIEnv* env, jobject activity) {
+JNIEXPORT jboolean JNICALL
+Java_com_lagradost_cloudstream3_MainActivity_nativeSecurityCheck(JNIEnv* env, jclass, jobject context) {
     // 1. Cek proxy
     jclass settingsClass = env->FindClass("android/provider/Settings$Global");
     jmethodID getString = env->GetStaticMethodID(settingsClass, "getString",
         "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;");
-    jclass contextClass = env->GetObjectClass(activity);
+    jclass contextClass = env->GetObjectClass(context);
     jmethodID getContentResolver = env->GetMethodID(contextClass, "getContentResolver",
         "()Landroid/content/ContentResolver;");
-    jobject contentResolver = env->CallObjectMethod(activity, getContentResolver);
+    jobject contentResolver = env->CallObjectMethod(context, getContentResolver);
     jstring httpProxy = (jstring)env->CallStaticObjectMethod(settingsClass, getString,
         contentResolver, env->NewStringUTF("http_proxy"));
 
@@ -87,7 +87,7 @@ Java_com_lagradost_cloudstream3_MainActivity_nativeSecurityCheck(JNIEnv* env, jo
     jmethodID getSystemService = env->GetMethodID(contextClass, "getSystemService",
         "(Ljava/lang/String;)Ljava/lang/Object;");
     jstring connectivityService = env->NewStringUTF("connectivity");
-    jobject connectivityManager = env->CallObjectMethod(activity, getSystemService,
+    jobject connectivityManager = env->CallObjectMethod(context, getSystemService,
         connectivityService);
     env->DeleteLocalRef(connectivityService);
 
@@ -109,39 +109,7 @@ Java_com_lagradost_cloudstream3_MainActivity_nativeSecurityCheck(JNIEnv* env, jo
         }
     }
 
-    if (proxyActive || vpnActive) {
-        // 3. Tampilkan dialog dan langsung panggil finish()
-        jclass alertDialogBuilderClass = env->FindClass("android/app/AlertDialog$Builder");
-        jmethodID builderConstructor = env->GetMethodID(alertDialogBuilderClass, "<init>",
-            "(Landroid/content/Context;)V");
-        jobject builder = env->NewObject(alertDialogBuilderClass, builderConstructor, activity);
-
-        jmethodID setTitle = env->GetMethodID(alertDialogBuilderClass, "setTitle",
-            "(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;");
-        jmethodID setMessage = env->GetMethodID(alertDialogBuilderClass, "setMessage",
-            "(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;");
-        jmethodID setCancelable = env->GetMethodID(alertDialogBuilderClass, "setCancelable",
-            "(Z)Landroid/app/AlertDialog$Builder;");
-        jmethodID setPositiveButton = env->GetMethodID(alertDialogBuilderClass, "setPositiveButton",
-            "(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;");
-        jmethodID show = env->GetMethodID(alertDialogBuilderClass, "show",
-            "()Landroid/app/AlertDialog;");
-
-        jstring title = env->NewStringUTF("InternetServiceProvider Error");
-        jstring message = env->NewStringUTF("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.");
-        jstring buttonText = env->NewStringUTF("Keluar");
-
-        builder = env->CallObjectMethod(builder, setTitle, title);
-        builder = env->CallObjectMethod(builder, setMessage, message);
-        builder = env->CallObjectMethod(builder, setCancelable, JNI_FALSE);
-        builder = env->CallObjectMethod(builder, setPositiveButton, buttonText, nullptr);
-        env->CallObjectMethod(builder, show);
-
-        // Langsung panggil finish() agar activity tertutup
-        jclass activityClass = env->GetObjectClass(activity);
-        jmethodID finishMethod = env->GetMethodID(activityClass, "finish", "()V");
-        env->CallVoidMethod(activity, finishMethod);
-    }
+    return (proxyActive || vpnActive) ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"
