@@ -1,34 +1,50 @@
 package com.lagradost.cloudstream3.utils
 
+import android.util.Base64
+import com.lagradost.cloudstream3.BuildConfig
+
 object RepoProtector {
 
     init {
-        System.loadLibrary("xsecure")
-    }
-
-    // Utamakan native – jika gagal, fallback ke XOR (opzional)
-    @JvmStatic
-    fun getPremiumRepoUrl(): String {
-        return try {
-            nativeGetPremiumRepoUrl()
+        try {
+            System.loadLibrary("xsecure")
         } catch (e: UnsatisfiedLinkError) {
-            RepoDecryptor.getPremiumRepoUrl()
+            // native tidak tersedia, fallback ke XOR
         }
     }
 
-    @JvmStatic
-    fun getFreeRepoUrl(): String {
-        return try {
-            nativeGetFreeRepoUrl()
-        } catch (e: UnsatisfiedLinkError) {
-            RepoDecryptor.getFreeRepoUrl()
-        }
-    }
-
-    // Native methods (private)
+    // Native method (private)
     @JvmStatic
     private external fun nativeGetPremiumRepoUrl(): String
 
     @JvmStatic
     private external fun nativeGetFreeRepoUrl(): String
+
+    // XOR fallback
+    private val xorKey: String by lazy {
+        BuildConfig.OBFUSCATED_KEY.map { (it - 7).toChar() }.joinToString("")
+    }
+
+    private fun xorDecrypt(hex: String): String {
+        val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val keyBytes = xorKey.toByteArray(Charsets.UTF_8)
+        val dec = ByteArray(bytes.size)
+        for (i in bytes.indices) dec[i] = (bytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+        val b64 = String(dec, Charsets.UTF_8)
+        val url = Base64.decode(b64, Base64.DEFAULT)
+        return String(url, Charsets.UTF_8)
+    }
+
+    // Public getter — coba native dulu, fallback XOR
+    fun getPremiumRepoUrl(): String = try {
+        nativeGetPremiumRepoUrl()
+    } catch (e: Throwable) {
+        xorDecrypt(BuildConfig.PREMIUM_REPO_ENCODED)
+    }
+
+    fun getFreeRepoUrl(): String = try {
+        nativeGetFreeRepoUrl()
+    } catch (e: Throwable) {
+        xorDecrypt(BuildConfig.FREE_REPO_ENCODED)
+    }
 }

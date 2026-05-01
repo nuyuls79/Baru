@@ -17,7 +17,6 @@ object PremiumManager {
     val PREMIUM_REPO_URL = RepoProtector.getPremiumRepoUrl()
     val FREE_REPO_URL = RepoProtector.getFreeRepoUrl()
 
-    /** Ambil SharedPreferences biasa (tidak terenkripsi) */
     private fun getPrefs(context: Context) =
         PreferenceManager.getDefaultSharedPreferences(context)
 
@@ -26,9 +25,6 @@ object PremiumManager {
         return kotlin.math.abs(androidId.hashCode()).toString().take(8)
     }
 
-    /**
-     * Validasi Kode Aktivasi (6 Digit) – seperti sebelumnya.
-     */
     fun activatePremiumWithCode(context: Context, code: String, deviceId: String): Boolean {
         if (code.length != 6) return false
 
@@ -37,7 +33,6 @@ object PremiumManager {
             val datePartHex = inputCode.substring(0, 3)
             val sigPartHex = inputCode.substring(3, 6)
 
-            // Verifikasi signature
             val checkInput = "$deviceId$datePartHex$SALT"
             val md = MessageDigest.getInstance("MD5")
             val digest = md.digest(checkInput.toByteArray(Charsets.UTF_8))
@@ -46,7 +41,6 @@ object PremiumManager {
 
             if (sigPartHex != expectedSig) return false
 
-            // Kalkulasi expiry
             val daysFromEpoch = datePartHex.toInt(16)
             val expiryCal = Calendar.getInstance().apply {
                 set(EPOCH_YEAR, Calendar.JANUARY, 1, 0, 0, 0)
@@ -59,7 +53,6 @@ object PremiumManager {
             val expiryTime = expiryCal.timeInMillis
             if (System.currentTimeMillis() > expiryTime) return false
 
-            // Simpan ke SharedPreferences biasa
             getPrefs(context).edit().apply {
                 putBoolean(PREF_IS_PREMIUM, true)
                 putLong(PREF_EXPIRY_DATE, expiryTime)
