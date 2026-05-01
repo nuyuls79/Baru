@@ -5,35 +5,33 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
-import android.widget.Toast
+import android.os.Bundle
+import android.os.Process
+import android.provider.Settings
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import com.lagradost.api.setContext
-import com.lagradost.cloudstream3.mvvm.safe
-import com.lagradost.cloudstream3.mvvm.safeAsync
 import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.AppContextUtils.openBrowser
-import com.lagradost.cloudstream3.utils.Coroutines.runOnMainThread
 import com.lagradost.cloudstream3.utils.DataStore.getKey
 import com.lagradost.cloudstream3.utils.DataStore.getKeys
 import com.lagradost.cloudstream3.utils.DataStore.removeKey
 import com.lagradost.cloudstream3.utils.DataStore.removeKeys
 import com.lagradost.cloudstream3.utils.DataStore.setKey
 import com.lagradost.cloudstream3.utils.ImageLoader.buildImageLoader
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.PrintStream
 import java.lang.ref.WeakReference
-import java.util.Locale
-import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 class ExceptionHandler(
@@ -68,11 +66,35 @@ class ExceptionHandler(
 @Prerelease
 class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
+    private var activityCount = 0
+
     override fun onCreate() {
         super.onCreate()
-        // If we want to initialize Coil as early as possible, maybe when
-        // loading an image or GIF in a splash screen activity.
-        // buildImageLoader(applicationContext)
+
+        // === DETEKSI PROXY/VPN DI APPLICATION LEVEL ===
+        if (isProxyOrVpnActive()) {
+            clearAllCache()
+            Process.killProcess(Process.myPid())
+            return
+        }
+        // ==============================================
+
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) {
+                activityCount++
+            }
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {
+                activityCount--
+                if (activityCount <= 0) {
+                    clearAllCache()
+                }
+            }
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
 
         ExceptionHandler(filesDir.resolve("last_error")) {
             val intent = context!!.packageManager.getLaunchIntentForPackage(context!!.packageName)
@@ -83,22 +105,51 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    private fun isProxyOrVpnActive(): Boolean {
+        val proxyAddress = System.getProperty("http.proxyHost")
+            ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort")
+            ?: System.getProperty("https.proxyPort")
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
+
+        try {
+            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
+            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
+        } catch (e: Exception) {}
+
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
+        }
+        return false
+    }
+
+    private fun clearAllCache() {
+        try {
+            cacheDir?.deleteRecursively()
+            externalCacheDir?.deleteRecursively()
+            val tempDir = File(filesDir, "temp")
+            if (tempDir.exists()) tempDir.deleteRecursively()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
         context = base
-        // This can be removed without deprecation after next stable
         AcraApplication.context = context
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
-        // Coil module will be initialized globally when first loadImage() is invoked.
         return buildImageLoader(applicationContext)
     }
 
     companion object {
         var exceptionHandler: ExceptionHandler? = null
 
-        /** Use to get Activity from Context. */
         tailrec fun Context.getActivity(): Activity? {
             return when (this) {
                 is Activity -> this
@@ -163,12 +214,10 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             context?.removeKey(path)
         }
 
-        /** If fallbackWebView is true and a fragment is supplied then it will open a WebView with the URL if the browser fails. */
         fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
             context?.openBrowser(url, fallbackWebView, fragment)
         }
 
-        /** Will fall back to WebView if in TV or emulator layout. */
         fun openBrowser(url: String, activity: FragmentActivity?) {
             openBrowser(
                 url,

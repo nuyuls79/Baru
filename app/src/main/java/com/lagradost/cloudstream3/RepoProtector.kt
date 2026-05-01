@@ -1,31 +1,50 @@
 package com.lagradost.cloudstream3.utils
 
 import android.util.Base64
-import java.nio.charset.StandardCharsets
+import com.lagradost.cloudstream3.BuildConfig
 
 object RepoProtector {
-    
-    /**
-     * Fungsi untuk mengubah teks acak (Base64) kembali menjadi URL asli.
-     * Menggunakan blok try-catch agar aplikasi tidak crash jika terjadi error decoding.
-     */
-    fun decode(encoded: String): String {
-        return try {
-            val bytes = Base64.decode(encoded, Base64.DEFAULT)
-            String(bytes, StandardCharsets.UTF_8)
-        } catch (e: Exception) {
-            ""
+
+    init {
+        try {
+            System.loadLibrary("xsecure")
+        } catch (e: UnsatisfiedLinkError) {
+            // native tidak tersedia, fallback ke XOR
         }
     }
 
-    // === DATA URL YANG DISANDIKAN (ENCODED) ===
-    
-    // Repo Premium (Amanhnb88)
-    val PREMIUM_REPO_ENCODED = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24="
+    // Native method (private)
+    @JvmStatic
+    private external fun nativeGetPremiumRepoUrl(): String
 
-    // Repo Gratis (Michat88)
-    val FREE_REPO_ENCODED = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg=="
-    
-    // URL Firebase AdiXtream
-    val FIREBASE_URL_ENCODED = "aHR0cHM6Ly9hZGl4dHJlYW0tcHJlbWl1bS1kZWZhdWx0LXJ0ZGIuYXNpYS1zb3V0aGVhc3QxLmZpcmViYXNlZGF0YWJhc2UuYXBwLw=="
+    @JvmStatic
+    private external fun nativeGetFreeRepoUrl(): String
+
+    // XOR fallback
+    private val xorKey: String by lazy {
+        BuildConfig.OBFUSCATED_KEY.map { (it - 7).toChar() }.joinToString("")
+    }
+
+    private fun xorDecrypt(hex: String): String {
+        val bytes = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val keyBytes = xorKey.toByteArray(Charsets.UTF_8)
+        val dec = ByteArray(bytes.size)
+        for (i in bytes.indices) dec[i] = (bytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+        val b64 = String(dec, Charsets.UTF_8)
+        val url = Base64.decode(b64, Base64.DEFAULT)
+        return String(url, Charsets.UTF_8)
+    }
+
+    // Public getter — coba native dulu, fallback XOR
+    fun getPremiumRepoUrl(): String = try {
+        nativeGetPremiumRepoUrl()
+    } catch (e: Throwable) {
+        xorDecrypt(BuildConfig.PREMIUM_REPO_XOR)   // <-- UBAH KE PREMIUM_REPO_XOR
+    }
+
+    fun getFreeRepoUrl(): String = try {
+        nativeGetFreeRepoUrl()
+    } catch (e: Throwable) {
+        xorDecrypt(BuildConfig.FREE_REPO_XOR)       // <-- UBAH KE FREE_REPO_XOR
+    }
 }
