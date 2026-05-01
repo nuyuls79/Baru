@@ -1,4 +1,4 @@
-name: Build Release (FINAL XOR)
+name: Build Release (FINAL signature)
 
 on:
   workflow_dispatch:
@@ -8,6 +8,7 @@ on:
       - main
       - Patch-obfuscation   # tambahkan branch yang kamu pakai
       - Patch-XOR
+      - Patch-signature
 
 jobs:
   build:
