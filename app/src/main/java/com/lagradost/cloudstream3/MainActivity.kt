@@ -543,23 +543,13 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         override fun onSessionResuming(session: Session, s: String) {}
     }
 
-    // ==================== NATIVE METHOD DETEKSI PROXY/VPN ====================
-    private external fun isProxyOrVpnActive(context: Context): Boolean
-    // =======================================================================
+    // ==================== NATIVE SECURITY CHECK ====================
+    private external fun nativeSecurityCheck()
+    // ==============================================================
 
     override fun onResume() {
         super.onResume()
-        // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
-        if (isProxyOrVpnActive(this)) {
-            AlertDialog.Builder(this)
-                .setTitle("InternetServiceProvider Error")
-                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
-                .setCancelable(false)
-                .setPositiveButton("Keluar") { _, _ -> finish() }
-                .show()
-            return
-        }
-        // =====================================================================
+        nativeSecurityCheck()
         afterPluginsLoadedEvent += ::onAllPluginsLoaded
         setActivityInstance(this)
         try {
@@ -1001,18 +991,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     @Suppress("DEPRECATION_ERROR")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // === DETEKSI PROXY/VPN SAAT PERTAMA KALI DIBUKA ===
-        if (isProxyOrVpnActive(this)) {
-            AlertDialog.Builder(this)
-                .setTitle("InternetServiceProvider Error")
-                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
-                .setCancelable(false)
-                .setPositiveButton("Keluar") { _, _ -> finish() }
-                .show()
-            return
-        }
-        // ===================================================
+        nativeSecurityCheck()
 
         app.initClient(this)
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
