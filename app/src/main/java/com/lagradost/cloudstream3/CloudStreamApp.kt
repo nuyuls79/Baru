@@ -1,11 +1,16 @@
 package com.lagradost.cloudstream3
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Process
+import android.provider.Settings
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
@@ -70,6 +75,22 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+
+        // === DETEKSI PROXY/VPN DI APPLICATION LEVEL ===
+        if (isProxyOrVpnActive()) {
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("InternetServiceProvider Error")
+                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
+                .setCancelable(false)
+                .setPositiveButton("Keluar") { _, _ ->
+                    Process.killProcess(Process.myPid())
+                }
+                .create()
+            dialog.show()
+            return
+        }
+        // ==============================================
+
         // If we want to initialize Coil as early as possible, maybe when
         // loading an image or GIF in a splash screen activity.
         // buildImageLoader(applicationContext)
@@ -81,6 +102,39 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             exceptionHandler = it
             Thread.setDefaultUncaughtExceptionHandler(it)
         }
+    }
+
+    private fun isProxyOrVpnActive(): Boolean {
+        // 1. Cek proxy dari system properties
+        val proxyAddress = System.getProperty("http.proxyHost")
+            ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort")
+            ?: System.getProperty("https.proxyPort")
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) {
+            return true
+        }
+
+        // 2. Cek proxy dari Settings.Global
+        try {
+            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
+            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") {
+                return true
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+
+        // 3. Cek VPN
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                return true
+            }
+        }
+
+        return false
     }
 
     override fun attachBaseContext(base: Context?) {

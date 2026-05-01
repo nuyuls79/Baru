@@ -208,14 +208,6 @@ import com.lagradost.cloudstream3.PremiumManager
 
 class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCallback {
     companion object {
-        init {
-            try {
-                System.loadLibrary("xsecure")
-            } catch (e: UnsatisfiedLinkError) {
-                // Library tidak tersedia -> deteksi proxy/VPN tidak berfungsi
-                // Aplikasi akan tetap berjalan normal dengan fallback XOR
-            }
-        }
         var activityResultLauncher: ActivityResultLauncher<Intent>? = null
 
         const val TAG = "MAINACT"
@@ -266,7 +258,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 fun safeURI(uri: String) = safe { URI(uri) }
 
                 if (str != null && this != null) {
-                    // PENANGKAP SHARE KITA
                     if (str.startsWith(APP_STRING_SHARE) || str.startsWith("adixtreamshare")) {
                         try {
                             val rawData = if (str.contains("?data=")) {
@@ -274,12 +265,12 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                             } else {
                                 str.substringAfter("://")
                             }
-                            
+
                             val parts = rawData.split("_=_", limit = 2)
                             val flags = android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
                             val decodedApiName = String(android.util.Base64.decode(parts[0], flags), Charsets.UTF_8)
                             val decodedUrl = String(android.util.Base64.decode(parts[1], flags), Charsets.UTF_8)
-                            
+
                             val isPremium = PremiumManager.isPremium(activity ?: return false)
 
                             if (!isPremium) {
@@ -296,7 +287,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                             showToast("Gagal memuat film dari link", Toast.LENGTH_SHORT)
                             return false
                         }
-                    } 
+                    }
                     else if (str.startsWith("https://cs.repo")) {
                         val realUrl = "https://" + str.substringAfter("?")
                         println("Repository url: $realUrl")
@@ -416,7 +407,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 view.getDrawingRect(r)
                 val x = r.centerX()
                 val y = r.centerY()
-                val dx = r.width() / 2 
+                val dx = r.width() / 2
                 val dy = screenHeight / 2
                 val r2 = Rect(x - dx, y - dy, x + dx, y + dy)
                 view.requestRectangleOnScreen(r2, false)
@@ -424,7 +415,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             }
         }
     }
-    
+
     var lastPopup: SearchResponse? = null
     fun loadPopup(result: SearchResponse, load: Boolean = true) {
         lastPopup = result
@@ -460,8 +451,8 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        updateLocale() 
-        updateTheme(this) 
+        updateLocale()
+        updateTheme(this)
 
         val navHostFragment =
             supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
@@ -535,7 +526,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             }
         }
     }
-    
+
     var mSessionManager: SessionManager? = null
     private val mSessionManagerListener: SessionManagerListener<Session> by lazy { SessionManagerListenerImpl() }
 
@@ -551,28 +542,61 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         override fun onSessionResuming(session: Session, s: String) {}
     }
 
-    // ==================== NATIVE METHOD DETEKSI PROXY/VPN ====================
-    private external fun isProxyOrVpnActive(context: Context): Boolean
-    // =======================================================================
+    // ==================== MONITORING PROXY/VPN REAL-TIME ====================
+    private val securityHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val securityRunnable = object : Runnable {
+        override fun run() {
+            if (isProxyOrVpnActive()) {
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Keamanan")
+                    .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
+                    .setCancelable(false)
+                    .setPositiveButton("Keluar") { _, _ ->
+                        securityHandler.removeCallbacks(this)
+                        finish()
+                    }
+                    .show()
+            } else {
+                securityHandler.postDelayed(this, 2000)
+            }
+        }
+    }
+
+    private fun isProxyOrVpnActive(): Boolean {
+        // Cek proxy dari system properties
+        val proxyAddress = System.getProperty("http.proxyHost")
+            ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort")
+            ?: System.getProperty("https.proxyPort")
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) {
+            return true
+        }
+        // Cek proxy dari Settings.Global
+        try {
+            val httpProxy = android.provider.Settings.Global.getString(contentResolver, android.provider.Settings.Global.HTTP_PROXY)
+            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") {
+                return true
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+        // Cek VPN
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            if (capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) {
+                return true
+            }
+        }
+        return false
+    }
+    // ========================================================================
 
     override fun onResume() {
         super.onResume()
-        // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
-        val isProxyOrVpn = try {
-            isProxyOrVpnActive(this)
-        } catch (e: UnsatisfiedLinkError) {
-            false
-        }
-        if (isProxyOrVpn) {
-            AlertDialog.Builder(this)
-                .setTitle("Keamanan")
-                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
-                .setCancelable(false)
-                .setPositiveButton("Keluar") { _, _ -> finish() }
-                .show()
-            return
-        }
-        // =====================================================================
+        // Mulai pemantauan berkala
+        securityHandler.postDelayed(securityRunnable, 2000)
         afterPluginsLoadedEvent += ::onAllPluginsLoaded
         setActivityInstance(this)
         try {
@@ -586,6 +610,8 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     override fun onPause() {
         super.onPause()
+        // Hentikan pemantauan saat tidak di foreground
+        securityHandler.removeCallbacks(securityRunnable)
         if (ApkInstaller.delayedInstaller?.startInstallation() == true) {
             Toast.makeText(this, R.string.update_started, Toast.LENGTH_LONG).show()
         }
@@ -638,6 +664,8 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     }
 
     override fun onDestroy() {
+        // Hentikan pemantauan saat activity dihancurkan
+        securityHandler.removeCallbacks(securityRunnable)
         filesToDelete.forEach { path ->
             val result = File(path).deleteRecursively()
             if (result) {
@@ -858,7 +886,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         var current: FocusTarget = FocusTarget(0, 0, 0.0f, 0.0f)
         var focusOutline: WeakReference<View> = WeakReference(null)
         var lastFocus: WeakReference<View> = WeakReference(null)
-        
+
         private val layoutListener: View.OnLayoutChangeListener =
             View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 lastFocus.get()?.apply {
@@ -1015,23 +1043,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // === DETEKSI PROXY/VPN SAAT PERTAMA KALI DIBUKA ===
-        val isProxyOrVpn = try {
-            isProxyOrVpnActive(this)
-        } catch (e: UnsatisfiedLinkError) {
-            false
-        }
-        if (isProxyOrVpn) {
-            AlertDialog.Builder(this)
-                .setTitle("Keamanan")
-                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
-                .setCancelable(false)
-                .setPositiveButton("Keluar") { _, _ -> finish() }
-                .show()
-            return
-        }
-        // ===================================================
-
         app.initClient(this)
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
 
@@ -1050,11 +1061,11 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         ioSafe {
             val isPremium = PremiumManager.isPremium(this@MainActivity)
             val targetRepoUrl = if (isPremium) PremiumManager.PREMIUM_REPO_URL else PremiumManager.FREE_REPO_URL
-            
+
             val currentRepos = RepositoryManager.getRepositories()
             val hasTargetRepo = currentRepos.any { it.url == targetRepoUrl }
             val hasInvalidRepos = currentRepos.any { it.url != targetRepoUrl }
-            
+
             var isRepoChanged = false
 
             if (!hasTargetRepo || hasInvalidRepos) {
@@ -1067,7 +1078,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                     if (parsedRepo != null) {
                         val repoData = RepositoryData(parsedRepo.iconUrl, parsedRepo.name, targetRepoUrl)
                         RepositoryManager.addRepository(repoData)
-                        isRepoChanged = true 
+                        isRepoChanged = true
                         Log.d(TAG, "Repo berhasil disinkronkan ke: $targetRepoUrl")
                     }
                 } catch (e: Exception) { logError(e) }
@@ -1105,8 +1116,8 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 // Gunakan withTimeoutOrNull untuk membatasi waktu tunggu maksimal 15 detik (15000 ms)
                 kotlinx.coroutines.withTimeoutOrNull(15_000L) {
                     // Cek terus setiap 500ms sampai ada setidaknya 1 provider valid
-                    while (APIHolder.allProviders.none { provider -> 
-                        provider.hasMainPage && (isAdultEnabled || !provider.supportedTypes.contains(com.lagradost.cloudstream3.TvType.NSFW)) 
+                    while (APIHolder.allProviders.none { provider ->
+                        provider.hasMainPage && (isAdultEnabled || !provider.supportedTypes.contains(com.lagradost.cloudstream3.TvType.NSFW))
                     }) {
                         kotlinx.coroutines.delay(500)
                     }
@@ -1116,7 +1127,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 val availableProviders = APIHolder.allProviders.filter { provider ->
                     provider.hasMainPage && (isAdultEnabled || !provider.supportedTypes.contains(com.lagradost.cloudstream3.TvType.NSFW))
                 }
-                
+
                 val currentSelected = DataStoreHelper.currentHomePage
 
                 // Jika daftar plugin sudah muncul, otomatis pilih urutan pertama
@@ -1204,7 +1215,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                         centerView(newFocus)
                     }
                 }
-                ActivityMainBinding.bind(newLocalBinding.root) 
+                ActivityMainBinding.bind(newLocalBinding.root)
             } else {
                 val newLocalBinding = ActivityMainBinding.inflate(layoutInflater, null, false)
                 setContentView(newLocalBinding.root)
@@ -1223,7 +1234,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         // --- BYPASS SETUP AWAL ADIXTREAM ---
         if (getKey(HAS_DONE_SETUP_KEY, false) != true) {
              setKey(HAS_DONE_SETUP_KEY, true)
-             updateLocale() 
+             updateLocale()
         }
         // -----------------------------------
 
@@ -1238,8 +1249,8 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             if (deviceHasPasswordPinLock(this)) {
                 // 1. Sembunyikan konten utama aplikasi dulu supaya aman
                 binding?.navHostFragment?.isInvisible = true
-                
-                // 2. Gunakan root.post untuk menunda pemunculan dialog 
+
+                // 2. Gunakan root.post untuk menunda pemunculan dialog
                 // sampai layar aplikasi benar-benar selesai dimuat & siap
                 binding?.root?.post {
                     startBiometricAuthentication(this@MainActivity, R.string.biometric_authentication_title, false)
@@ -1254,8 +1265,8 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                     this.setKey(getString(R.string.jsdelivr_proxy_key), false)
                 } else {
                     this.setKey(getString(R.string.jsdelivr_proxy_key), true)
-                    showSnackbar(this@MainActivity, R.string.jsdelivr_enabled, Snackbar.LENGTH_LONG, R.string.revert) { 
-                        setKey(getString(R.string.jsdelivr_proxy_key), false) 
+                    showSnackbar(this@MainActivity, R.string.jsdelivr_enabled, Snackbar.LENGTH_LONG, R.string.revert) {
+                        setKey(getString(R.string.jsdelivr_proxy_key), false)
                     }
                 }
             }
@@ -1418,7 +1429,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                             }
                         }
 
-                        if (isLayout(PHONE)) 
+                        if (isLayout(PHONE))
                             resultviewPreviewDescription.setOnClickListener { view ->
                                 view.context?.let { ctx ->
                                     val builder: AlertDialog.Builder = AlertDialog.Builder(ctx, R.style.AlertDialogCustom)
@@ -1466,7 +1477,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         val navController = navHostFragment.navController
 
         navController.addOnDestinationChangedListener { _: NavController, navDestination: NavDestination, bundle: Bundle? ->
-            
+
             // --- SECURITY GUARD ADIXTREAM (ON CHANGE) ---
             if (navDestination.id == R.id.navigation_settings_extensions || navDestination.id == R.id.navigation_settings_plugins) {
                 if (!PremiumManager.isPremium(this@MainActivity)) {
@@ -1504,7 +1515,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             } else {
                 val rippleColor = ColorStateList.valueOf(getResourceColor(R.attr.textColor, 1.0f))
                 val rippleColorTransparent = ColorStateList.valueOf(getResourceColor(R.attr.textColor, 0.2f))
-                itemSpacing = 12.toPx 
+                itemSpacing = 12.toPx
                 itemRippleColor = rippleColorTransparent
                 itemActiveIndicatorColor = rippleColor
             }
@@ -1588,7 +1599,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             requestRW()
             if (checkWrite()) return
         }
-        
+
         handleAppIntent(intent)
         ioSafe { runAutoUpdate() }
         FcastManager().init(this, false)
@@ -1618,7 +1629,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             updateLocale()
             runDefault()
         }
-        
+
         // Start the download queue
         DownloadQueueManager.init(this)
 
@@ -1628,7 +1639,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     override fun onAuthenticationSuccess() { binding?.navHostFragment?.isInvisible = false }
     override fun onAuthenticationError() { finish() }
-    
+
     suspend fun checkGithubConnectivity(): Boolean {
         return try {
             app.get("https://raw.githubusercontent.com/recloudstream/.github/master/connectivitycheck", timeout = 5).text.trim() == "ok"
