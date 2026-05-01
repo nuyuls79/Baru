@@ -5,13 +5,14 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
-import android.util.Log
+import android.util.Base64
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -33,6 +34,7 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.PrintStream
 import java.lang.ref.WeakReference
+import java.security.MessageDigest
 import kotlin.system.exitProcess
 
 class ExceptionHandler(
@@ -69,33 +71,25 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    init {
-        try {
-            System.loadLibrary("xsecure")
-            Log.d("CloudStreamApp", "✅ Native library loaded")
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e("CloudStreamApp", "❌ Failed to load native: ${e.message}")
-        }
-    }
+    // Masukkan hasil SHA-256 asli Anda di sini
+    private val ORIGINAL_SIGNATURE = "ISI_DENGAN_HASH_SHA256_ANDA"
 
     override fun onCreate() {
         super.onCreate()
 
-        // === checkAndBlock DENGAN LOG & FALLBACK ===
-        try {
-            Log.d("CloudStreamApp", "⏳ Memanggil checkAndBlock()...")
-            checkAndBlock()
-            Log.d("CloudStreamApp", "✅ checkAndBlock() selesai (tidak terdeteksi)")
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e("CloudStreamApp", "❌ checkAndBlock() native tidak tersedia, fallback ke Java")
-            if (isProxyOrVpnActive()) {
-                Log.d("CloudStreamApp", "🛑 Proxy/VPN terdeteksi via Java, membersihkan cache & exit")
-                clearAllCache()
-                Process.killProcess(Process.myPid())
-                return
-            }
+        // === LAYER 1: INTEGRITY CHECK (SIGNATURE) ===
+        // Mencegah aplikasi dijalankan jika sudah di-mod/re-sign
+        if (!isSignatureValid()) {
+            performSilentKill()
+            return
         }
-        // ======================================
+
+        // === LAYER 2: NETWORK SECURITY (PROXY/VPN) ===
+        // Mencegah penggunaan aplikasi capture data
+        if (isProxyOrVpnActive()) {
+            performSilentKill()
+            return
+        }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -123,20 +117,52 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    private external fun checkAndBlock()
+    /**
+     * Memverifikasi apakah tanda tangan APK cocok dengan versi asli.
+     */
+    private fun isSignatureValid(): Boolean {
+        if (ORIGINAL_SIGNATURE.isEmpty() || ORIGINAL_SIGNATURE == "ISI_DENGAN_HASH_SHA256_ANDA") return true // Bypass jika belum diset
+        
+        try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            }
+
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.signatures
+            }
+
+            signatures?.forEach { sig ->
+                val md = MessageDigest.getInstance("SHA-256")
+                md.update(sig.toByteArray())
+                val currentSignature = Base64.encodeToString(md.digest(), Base64.NO_WRAP)
+                if (ORIGINAL_SIGNATURE == currentSignature) return true
+            }
+        } catch (e: Exception) {
+            return false
+        }
+        return false
+    }
 
     private fun isProxyOrVpnActive(): Boolean {
-        val proxyAddress = System.getProperty("http.proxyHost")
-            ?: System.getProperty("https.proxyHost")
-        val proxyPort = System.getProperty("http.proxyPort")
-            ?: System.getProperty("https.proxyPort")
+        // Cek System Properties (untuk Proxy)
+        val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
         if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
 
+        // Cek Global Settings
         try {
             val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
             if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
         } catch (e: Exception) {}
 
+        // Cek Connectivity Manager (untuk VPN)
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
@@ -144,6 +170,15 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
         }
         return false
+    }
+
+    /**
+     * Mematikan aplikasi secara bersih dan menghapus cache agar data capture tidak tersisa.
+     */
+    private fun performSilentKill() {
+        clearAllCache()
+        Process.killProcess(Process.myPid())
+        exitProcess(0)
     }
 
     private fun clearAllCache() {
