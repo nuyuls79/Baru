@@ -10,8 +10,12 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.AttributeSet
 import android.util.Log
 import android.view.Gravity
@@ -208,7 +212,6 @@ import com.lagradost.cloudstream3.PremiumManager
 
 class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCallback {
     companion object {
-        // ... (isi companion object tetap sama) ...
         var activityResultLauncher: ActivityResultLauncher<Intent>? = null
 
         const val TAG = "MAINACT"
@@ -808,7 +811,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     var binding: ActivityMainBinding? = null
     object TvFocus {
-        // ... (isi TvFocus sama, tidak diubah) ...
         data class FocusTarget(
             val width: Int,
             val height: Int,
@@ -985,14 +987,46 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         }
     }
 
+    // ==================== DETEKSI PROXY & VPN ====================
+    private fun isProxyActive(): Boolean {
+        // Cek lewat system properties
+        val proxyAddress = System.getProperty("http.proxyHost")
+            ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort")
+            ?: System.getProperty("https.proxyPort")
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) {
+            return true
+        }
+        // Cek lewat Settings.Global (lebih akurat)
+        return try {
+            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
+            !httpProxy.isNullOrBlank() && httpProxy != ":0"
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun isVpnActive(): Boolean {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        }
+        return false
+    }
+    // ============================================================
+
     @Suppress("DEPRECATION_ERROR")
     override fun onCreate(savedInstanceState: Bundle?) {
-        // ❌ BLOK VPN DIHAPUS - SecurityUtils tidak digunakan lagi
-        // if (SecurityUtils.isVpnActive(this)) {
-        //     Toast.makeText(this,"VPN / Packet Capture tidak diizinkan",Toast.LENGTH_LONG).show()
-        //     finish()
-        // }
-        
+        // === DETEKSI PROXY & VPN (ANTI-HTTPCANARY, CHARLES, BURP, PACKET CAPTURE, DLL.) ===
+        if (isProxyActive() || isVpnActive()) {
+            Toast.makeText(this, "Aplikasi tidak dapat berjalan dengan proxy/VPN aktif", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        // ==================================================================================
+
         app.initClient(this)
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
 
