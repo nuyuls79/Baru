@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.util.Log
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -71,30 +72,39 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     init {
         try {
             System.loadLibrary("xsecure")
+            Log.d("CloudStreamApp", "Native library loaded successfully")
         } catch (e: UnsatisfiedLinkError) {
-            // Native tidak tersedia – aplikasi tetap berjalan dengan fallback Java
+            Log.e("CloudStreamApp", "Failed to load native library: ${e.message}")
         }
     }
 
     override fun onCreate() {
         super.onCreate()
 
-        // === SECURITY CHECK (DENGAN FALLBACK) ===
+        Log.d("CloudStreamApp", "onCreate started")
+
+        // === DEBUG: CHECK AND BLOCK DISABLED ===
+        // Untuk memastikan aplikasi bisa masuk, kita nonaktifkan dulu
+        // Jika aplikasi sudah berjalan normal, aktifkan kembali dengan menghapus komentar di bawah
+        /*
         try {
             checkAndBlock()
         } catch (e: UnsatisfiedLinkError) {
-            // Native tidak ada, gunakan Java fallback
+            Log.e("CloudStreamApp", "checkAndBlock failed: ${e.message}")
             if (isProxyOrVpnActive()) {
                 clearAllCache()
                 Process.killProcess(Process.myPid())
-                return
             }
         }
+        */
 
+        // === MONITORING REAL-TIME (NATIVE + FALLBACK) ===
         try {
             startNativeMonitor()
+            Log.d("CloudStreamApp", "startNativeMonitor successful")
         } catch (e: UnsatisfiedLinkError) {
-            // Native tidak ada – monitoring dilakukan oleh MainActivity
+            Log.e("CloudStreamApp", "startNativeMonitor failed: ${e.message}")
+            // Fallback: tidak melakukan apa-apa, monitoring diserahkan ke MainActivity
         }
         // =========================================
 
@@ -122,6 +132,8 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             exceptionHandler = it
             Thread.setDefaultUncaughtExceptionHandler(it)
         }
+
+        Log.d("CloudStreamApp", "onCreate finished")
     }
 
     // ==================== NATIVE METHODS ====================
