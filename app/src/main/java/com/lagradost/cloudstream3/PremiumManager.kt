@@ -2,14 +2,12 @@ package com.lagradost.cloudstream3
 
 import android.content.Context
 import android.provider.Settings
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
+import androidx.preference.PreferenceManager
 import java.security.MessageDigest
 import java.util.Calendar
 import com.lagradost.cloudstream3.utils.RepoProtector
 
 object PremiumManager {
-    private const val PREF_NAME = "adixtream_premium_enc"
     private const val PREF_IS_PREMIUM = "is_premium_user"
     private const val PREF_EXPIRY_DATE = "premium_expiry_date"
 
@@ -19,13 +17,9 @@ object PremiumManager {
     val PREMIUM_REPO_URL = RepoProtector.getPremiumRepoUrl()
     val FREE_REPO_URL = RepoProtector.getFreeRepoUrl()
 
-    private fun getPrefs(context: Context) = EncryptedSharedPreferences.create(
-        PREF_NAME,
-        MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
-        context,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    /** Ambil SharedPreferences biasa (tidak terenkripsi) */
+    private fun getPrefs(context: Context) =
+        PreferenceManager.getDefaultSharedPreferences(context)
 
     fun getDeviceId(context: Context): String {
         val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "00000000"
@@ -33,8 +27,7 @@ object PremiumManager {
     }
 
     /**
-     * Aktivasi premium – logika asli Kotlin (sudah terbukti bekerja).
-     * Native hanya dipanggil untuk cek signature APK (opsional).
+     * Validasi Kode Aktivasi (6 Digit) – seperti sebelumnya.
      */
     fun activatePremiumWithCode(context: Context, code: String, deviceId: String): Boolean {
         if (code.length != 6) return false
@@ -66,7 +59,7 @@ object PremiumManager {
             val expiryTime = expiryCal.timeInMillis
             if (System.currentTimeMillis() > expiryTime) return false
 
-            // Simpan terenkripsi
+            // Simpan ke SharedPreferences biasa
             getPrefs(context).edit().apply {
                 putBoolean(PREF_IS_PREMIUM, true)
                 putLong(PREF_EXPIRY_DATE, expiryTime)
@@ -99,14 +92,11 @@ object PremiumManager {
 
     fun getExpiryDateString(context: Context): String {
         val date = getPrefs(context).getLong(PREF_EXPIRY_DATE, 0)
-        return if (date == 0L) "Non-Premium" else java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(date))
+        return if (date == 0L) "Non-Premium"
+        else java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date(date))
     }
 
     fun getExpiryDateMillis(context: Context): Long {
         return getPrefs(context).getLong(PREF_EXPIRY_DATE, 0)
     }
-
-    // Native method untuk deteksi repack (cek signature APK)
-    @JvmStatic
-    external fun isSignatureValid(): Boolean
 }
