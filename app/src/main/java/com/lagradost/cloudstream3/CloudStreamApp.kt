@@ -8,9 +8,9 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
-import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -66,6 +66,8 @@ class ExceptionHandler(
 @Prerelease
 class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
+    private var activityCount = 0
+
     override fun onCreate() {
         super.onCreate()
 
@@ -76,6 +78,23 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             return
         }
         // ==============================================
+
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) {
+                activityCount++
+            }
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {
+                activityCount--
+                if (activityCount <= 0) {
+                    clearAllCache()
+                }
+            }
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
 
         ExceptionHandler(filesDir.resolve("last_error")) {
             val intent = context!!.packageManager.getLaunchIntentForPackage(context!!.packageName)

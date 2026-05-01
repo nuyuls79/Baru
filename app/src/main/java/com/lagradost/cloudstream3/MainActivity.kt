@@ -3,6 +3,8 @@ package com.lagradost.cloudstream3
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -10,8 +12,13 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Process
+import android.provider.Settings
 import android.util.AttributeSet
 import android.util.Log
 import android.view.Gravity
@@ -37,6 +44,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.core.view.children
@@ -542,20 +550,15 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         override fun onSessionResuming(session: Session, s: String) {}
     }
 
-    // ==================== MONITORING PROXY/VPN REAL-TIME ====================
+    // ==================== MONITORING PROXY/VPN + NOTIF + CLEAR CACHE ====================
     private val securityHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val securityRunnable = object : Runnable {
         override fun run() {
             if (isProxyOrVpnActive()) {
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Keamanan")
-                    .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
-                    .setCancelable(false)
-                    .setPositiveButton("Keluar") { _, _ ->
-                        securityHandler.removeCallbacks(this)
-                        finish()
-                    }
-                    .show()
+                clearAllCache()
+                showNetworkBlockNotification()
+                securityHandler.removeCallbacks(this)
+                Process.killProcess(Process.myPid())
             } else {
                 securityHandler.postDelayed(this, 2000)
             }
@@ -563,39 +566,57 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     }
 
     private fun isProxyOrVpnActive(): Boolean {
-        // Cek proxy dari system properties
         val proxyAddress = System.getProperty("http.proxyHost")
             ?: System.getProperty("https.proxyHost")
         val proxyPort = System.getProperty("http.proxyPort")
             ?: System.getProperty("https.proxyPort")
-        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) {
-            return true
-        }
-        // Cek proxy dari Settings.Global
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
+
         try {
-            val httpProxy = android.provider.Settings.Global.getString(contentResolver, android.provider.Settings.Global.HTTP_PROXY)
-            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") {
-                return true
-            }
-        } catch (e: Exception) {
-            // ignore
-        }
-        // Cek VPN
-        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
+            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
+        } catch (e: Exception) {}
+
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
             val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-            if (capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) {
-                return true
-            }
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
         }
         return false
     }
-    // ========================================================================
+
+    private fun clearAllCache() {
+        try {
+            cacheDir?.deleteRecursively()
+            externalCacheDir?.deleteRecursively()
+            val tempDir = File(filesDir, "temp")
+            if (tempDir.exists()) tempDir.deleteRecursively()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun showNetworkBlockNotification() {
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "network_block"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Keamanan", NotificationManager.IMPORTANCE_HIGH)
+            notificationManager.createNotificationChannel(channel)
+        }
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.drawable.app_icon)
+            .setContentTitle("Jaringan terganggu")
+            .setContentText("Aplikasi tidak dapat berjalan dengan VPN/Proxy aktif.")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+        notificationManager.notify(999, notification)
+    }
+    // =========================================================================================
 
     override fun onResume() {
         super.onResume()
-        // Mulai pemantauan berkala
         securityHandler.postDelayed(securityRunnable, 2000)
         afterPluginsLoadedEvent += ::onAllPluginsLoaded
         setActivityInstance(this)
@@ -610,7 +631,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     override fun onPause() {
         super.onPause()
-        // Hentikan pemantauan saat tidak di foreground
         securityHandler.removeCallbacks(securityRunnable)
         if (ApkInstaller.delayedInstaller?.startInstallation() == true) {
             Toast.makeText(this, R.string.update_started, Toast.LENGTH_LONG).show()
@@ -664,7 +684,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     }
 
     override fun onDestroy() {
-        // Hentikan pemantauan saat activity dihancurkan
+        clearAllCache()
         securityHandler.removeCallbacks(securityRunnable)
         filesToDelete.forEach { path ->
             val result = File(path).deleteRecursively()
