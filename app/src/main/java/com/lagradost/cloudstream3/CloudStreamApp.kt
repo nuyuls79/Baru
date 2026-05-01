@@ -10,13 +10,13 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import com.lagradost.api.setContext
-import com.lagradost.cloudstream3.mvvm.safe
 import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
@@ -72,9 +72,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         // === DETEKSI PROXY/VPN DI APPLICATION LEVEL ===
         if (isProxyOrVpnActive()) {
             clearAllCache()
-            val intent = Intent(this, SecurityBlockActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            startActivity(intent)
             Process.killProcess(Process.myPid())
             return
         }
