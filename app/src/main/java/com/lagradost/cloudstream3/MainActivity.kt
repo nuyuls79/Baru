@@ -208,6 +208,14 @@ import com.lagradost.cloudstream3.PremiumManager
 
 class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCallback {
     companion object {
+        init {
+            try {
+                System.loadLibrary("xsecure")
+            } catch (e: UnsatisfiedLinkError) {
+                // Library tidak tersedia -> deteksi proxy/VPN tidak berfungsi
+                // Aplikasi akan tetap berjalan normal dengan fallback XOR
+            }
+        }
         var activityResultLauncher: ActivityResultLauncher<Intent>? = null
 
         const val TAG = "MAINACT"
@@ -550,7 +558,12 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     override fun onResume() {
         super.onResume()
         // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
-        if (isProxyOrVpnActive(this)) {
+        val isProxyOrVpn = try {
+            isProxyOrVpnActive(this)
+        } catch (e: UnsatisfiedLinkError) {
+            false
+        }
+        if (isProxyOrVpn) {
             AlertDialog.Builder(this)
                 .setTitle("Keamanan")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
@@ -1003,7 +1016,12 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         super.onCreate(savedInstanceState)
 
         // === DETEKSI PROXY/VPN SAAT PERTAMA KALI DIBUKA ===
-        if (isProxyOrVpnActive(this)) {
+        val isProxyOrVpn = try {
+            isProxyOrVpnActive(this)
+        } catch (e: UnsatisfiedLinkError) {
+            false
+        }
+        if (isProxyOrVpn) {
             AlertDialog.Builder(this)
                 .setTitle("Keamanan")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
