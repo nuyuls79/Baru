@@ -551,8 +551,12 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         super.onResume()
         // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
         if (isProxyActive() || isVpnActive()) {
-            Toast.makeText(this, "Proxy/VPN terdeteksi, aplikasi tidak dapat berjalan", Toast.LENGTH_LONG).show()
-            finish()
+            AlertDialog.Builder(this)
+                .setTitle("Keamanan")
+                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
+                .setCancelable(false)
+                .setPositiveButton("Keluar") { _, _ -> finish() }
+                .show()
             return
         }
         // =====================================================================
@@ -1026,13 +1030,19 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     @Suppress("DEPRECATION_ERROR")
     override fun onCreate(savedInstanceState: Bundle?) {
-        // === DETEKSI PROXY & VPN (ANTI-HTTPCANARY, CHARLES, BURP, PACKET CAPTURE, DLL.) ===
+        super.onCreate(savedInstanceState)
+
+        // === DETEKSI PROXY/VPN SAAT PERTAMA KALI DIBUKA ===
         if (isProxyActive() || isVpnActive()) {
-            Toast.makeText(this, "Aplikasi tidak dapat berjalan dengan proxy/VPN aktif", Toast.LENGTH_LONG).show()
-            finish()
+            AlertDialog.Builder(this)
+                .setTitle("Keamanan")
+                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
+                .setCancelable(false)
+                .setPositiveButton("Keluar") { _, _ -> finish() }
+                .show()
             return
         }
-        // ==================================================================================
+        // ===================================================
 
         app.initClient(this)
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
@@ -1047,7 +1057,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         enableEdgeToEdgeCompat()
         setNavigationBarColorCompat(R.attr.primaryGrayBackground)
         updateLocale()
-        super.onCreate(savedInstanceState)
 
         // --- LOGIKA REPOSITORY & UPDATE (ADIXTREAM ANTI-BUG V4 - POLLING SYSTEM) ---
         ioSafe {
