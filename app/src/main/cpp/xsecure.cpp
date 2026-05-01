@@ -61,4 +61,58 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
     return env->NewStringUTF(decoded.c_str());
 }
 
+// ==================== DETEKSI PROXY & VPN (ANTI-HTTPCANARY, DLL.) ====================
+JNIEXPORT jboolean JNICALL
+Java_com_lagradost_cloudstream3_MainActivity_isProxyOrVpnActive(JNIEnv* env, jclass, jobject context) {
+    // 1. Cek proxy dari Settings.Global
+    jclass settingsGlobalClass = env->FindClass("android/provider/Settings$Global");
+    jmethodID getStringMethod = env->GetStaticMethodID(settingsGlobalClass, "getString",
+        "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;");
+    jclass contextClass = env->GetObjectClass(context);
+    jmethodID getContentResolverMethod = env->GetMethodID(contextClass, "getContentResolver",
+        "()Landroid/content/ContentResolver;");
+    jobject contentResolver = env->CallObjectMethod(context, getContentResolverMethod);
+    jstring httpProxyJ = (jstring)env->CallStaticObjectMethod(settingsGlobalClass, getStringMethod,
+        contentResolver, env->NewStringUTF("http_proxy"));
+
+    if (httpProxyJ != nullptr) {
+        const char* proxyStr = env->GetStringUTFChars(httpProxyJ, nullptr);
+        bool proxyActive = (strlen(proxyStr) > 0 && strcmp(proxyStr, ":0") != 0);
+        env->ReleaseStringUTFChars(httpProxyJ, proxyStr);
+        if (proxyActive) return JNI_TRUE;
+    }
+
+    // 2. Cek VPN dari ConnectivityManager
+    jstring connectivityServiceName = env->NewStringUTF("connectivity");
+    jmethodID getSystemServiceMethod = env->GetMethodID(contextClass, "getSystemService",
+        "(Ljava/lang/String;)Ljava/lang/Object;");
+    jobject connectivityManager = env->CallObjectMethod(context, getSystemServiceMethod,
+        connectivityServiceName);
+    env->DeleteLocalRef(connectivityServiceName);
+
+    if (connectivityManager != nullptr) {
+        jclass connectivityManagerClass = env->FindClass("android/net/ConnectivityManager");
+        jmethodID getActiveNetworkMethod = env->GetMethodID(connectivityManagerClass,
+            "getActiveNetwork", "()Landroid/net/Network;");
+        jobject activeNetwork = env->CallObjectMethod(connectivityManager, getActiveNetworkMethod);
+        if (activeNetwork != nullptr) {
+            jmethodID getNetworkCapabilitiesMethod = env->GetMethodID(connectivityManagerClass,
+                "getNetworkCapabilities",
+                "(Landroid/net/Network;)Landroid/net/NetworkCapabilities;");
+            jobject capabilities = env->CallObjectMethod(connectivityManager,
+                getNetworkCapabilitiesMethod, activeNetwork);
+            if (capabilities != nullptr) {
+                jclass networkCapabilitiesClass = env->FindClass("android/net/NetworkCapabilities");
+                jmethodID hasTransportMethod = env->GetMethodID(networkCapabilitiesClass,
+                    "hasTransport", "(I)Z");
+                // TRANSPORT_VPN = 4
+                jboolean hasVpn = env->CallBooleanMethod(capabilities, hasTransportMethod, 4);
+                if (hasVpn) return JNI_TRUE;
+            }
+        }
+    }
+    return JNI_FALSE;
+}
+// ====================================================================================
+
 } // extern "C"
