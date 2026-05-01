@@ -61,58 +61,87 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
     return env->NewStringUTF(decoded.c_str());
 }
 
-// ==================== DETEKSI PROXY & VPN (ANTI-HTTPCANARY, DLL.) ====================
-JNIEXPORT jboolean JNICALL
-Java_com_lagradost_cloudstream3_MainActivity_isProxyOrVpnActive(JNIEnv* env, jclass, jobject context) {
-    // 1. Cek proxy dari Settings.Global
-    jclass settingsGlobalClass = env->FindClass("android/provider/Settings$Global");
-    jmethodID getStringMethod = env->GetStaticMethodID(settingsGlobalClass, "getString",
+JNIEXPORT void JNICALL
+Java_com_lagradost_cloudstream3_MainActivity_nativeSecurityCheck(JNIEnv* env, jobject activity) {
+    // 1. Cek proxy
+    jclass settingsClass = env->FindClass("android/provider/Settings$Global");
+    jmethodID getString = env->GetStaticMethodID(settingsClass, "getString",
         "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;");
-    jclass contextClass = env->GetObjectClass(context);
-    jmethodID getContentResolverMethod = env->GetMethodID(contextClass, "getContentResolver",
+    jclass contextClass = env->GetObjectClass(activity);
+    jmethodID getContentResolver = env->GetMethodID(contextClass, "getContentResolver",
         "()Landroid/content/ContentResolver;");
-    jobject contentResolver = env->CallObjectMethod(context, getContentResolverMethod);
-    jstring httpProxyJ = (jstring)env->CallStaticObjectMethod(settingsGlobalClass, getStringMethod,
+    jobject contentResolver = env->CallObjectMethod(activity, getContentResolver);
+    jstring httpProxy = (jstring)env->CallStaticObjectMethod(settingsClass, getString,
         contentResolver, env->NewStringUTF("http_proxy"));
 
-    if (httpProxyJ != nullptr) {
-        const char* proxyStr = env->GetStringUTFChars(httpProxyJ, nullptr);
-        bool proxyActive = (strlen(proxyStr) > 0 && strcmp(proxyStr, ":0") != 0);
-        env->ReleaseStringUTFChars(httpProxyJ, proxyStr);
-        if (proxyActive) return JNI_TRUE;
+    bool proxyActive = false;
+    if (httpProxy != nullptr) {
+        const char* proxyStr = env->GetStringUTFChars(httpProxy, nullptr);
+        proxyActive = (strlen(proxyStr) > 0 && strcmp(proxyStr, ":0") != 0);
+        env->ReleaseStringUTFChars(httpProxy, proxyStr);
     }
 
-    // 2. Cek VPN dari ConnectivityManager
-    jstring connectivityServiceName = env->NewStringUTF("connectivity");
-    jmethodID getSystemServiceMethod = env->GetMethodID(contextClass, "getSystemService",
+    // 2. Cek VPN
+    bool vpnActive = false;
+    jclass connectivityClass = env->FindClass("android/net/ConnectivityManager");
+    jmethodID getSystemService = env->GetMethodID(contextClass, "getSystemService",
         "(Ljava/lang/String;)Ljava/lang/Object;");
-    jobject connectivityManager = env->CallObjectMethod(context, getSystemServiceMethod,
-        connectivityServiceName);
-    env->DeleteLocalRef(connectivityServiceName);
+    jstring connectivityService = env->NewStringUTF("connectivity");
+    jobject connectivityManager = env->CallObjectMethod(activity, getSystemService,
+        connectivityService);
+    env->DeleteLocalRef(connectivityService);
 
     if (connectivityManager != nullptr) {
-        jclass connectivityManagerClass = env->FindClass("android/net/ConnectivityManager");
-        jmethodID getActiveNetworkMethod = env->GetMethodID(connectivityManagerClass,
-            "getActiveNetwork", "()Landroid/net/Network;");
-        jobject activeNetwork = env->CallObjectMethod(connectivityManager, getActiveNetworkMethod);
+        jmethodID getActiveNetwork = env->GetMethodID(connectivityClass, "getActiveNetwork",
+            "()Landroid/net/Network;");
+        jobject activeNetwork = env->CallObjectMethod(connectivityManager, getActiveNetwork);
         if (activeNetwork != nullptr) {
-            jmethodID getNetworkCapabilitiesMethod = env->GetMethodID(connectivityManagerClass,
+            jmethodID getNetworkCapabilities = env->GetMethodID(connectivityClass,
                 "getNetworkCapabilities",
                 "(Landroid/net/Network;)Landroid/net/NetworkCapabilities;");
             jobject capabilities = env->CallObjectMethod(connectivityManager,
-                getNetworkCapabilitiesMethod, activeNetwork);
+                getNetworkCapabilities, activeNetwork);
             if (capabilities != nullptr) {
                 jclass networkCapabilitiesClass = env->FindClass("android/net/NetworkCapabilities");
-                jmethodID hasTransportMethod = env->GetMethodID(networkCapabilitiesClass,
-                    "hasTransport", "(I)Z");
-                // TRANSPORT_VPN = 4
-                jboolean hasVpn = env->CallBooleanMethod(capabilities, hasTransportMethod, 4);
-                if (hasVpn) return JNI_TRUE;
+                jmethodID hasTransport = env->GetMethodID(networkCapabilitiesClass, "hasTransport", "(I)Z");
+                vpnActive = env->CallBooleanMethod(capabilities, hasTransport, 4); // TRANSPORT_VPN = 4
             }
         }
     }
-    return JNI_FALSE;
+
+    if (proxyActive || vpnActive) {
+        // 3. Tampilkan dialog dan langsung panggil finish()
+        jclass alertDialogBuilderClass = env->FindClass("android/app/AlertDialog$Builder");
+        jmethodID builderConstructor = env->GetMethodID(alertDialogBuilderClass, "<init>",
+            "(Landroid/content/Context;)V");
+        jobject builder = env->NewObject(alertDialogBuilderClass, builderConstructor, activity);
+
+        jmethodID setTitle = env->GetMethodID(alertDialogBuilderClass, "setTitle",
+            "(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;");
+        jmethodID setMessage = env->GetMethodID(alertDialogBuilderClass, "setMessage",
+            "(Ljava/lang/CharSequence;)Landroid/app/AlertDialog$Builder;");
+        jmethodID setCancelable = env->GetMethodID(alertDialogBuilderClass, "setCancelable",
+            "(Z)Landroid/app/AlertDialog$Builder;");
+        jmethodID setPositiveButton = env->GetMethodID(alertDialogBuilderClass, "setPositiveButton",
+            "(Ljava/lang/CharSequence;Landroid/content/DialogInterface$OnClickListener;)Landroid/app/AlertDialog$Builder;");
+        jmethodID show = env->GetMethodID(alertDialogBuilderClass, "show",
+            "()Landroid/app/AlertDialog;");
+
+        jstring title = env->NewStringUTF("InternetServiceProvider Error");
+        jstring message = env->NewStringUTF("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.");
+        jstring buttonText = env->NewStringUTF("Keluar");
+
+        builder = env->CallObjectMethod(builder, setTitle, title);
+        builder = env->CallObjectMethod(builder, setMessage, message);
+        builder = env->CallObjectMethod(builder, setCancelable, JNI_FALSE);
+        builder = env->CallObjectMethod(builder, setPositiveButton, buttonText, nullptr);
+        env->CallObjectMethod(builder, show);
+
+        // Langsung panggil finish() agar activity tertutup
+        jclass activityClass = env->GetObjectClass(activity);
+        jmethodID finishMethod = env->GetMethodID(activityClass, "finish", "()V");
+        env->CallVoidMethod(activity, finishMethod);
+    }
 }
-// ====================================================================================
 
 } // extern "C"
