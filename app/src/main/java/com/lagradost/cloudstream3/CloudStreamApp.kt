@@ -5,8 +5,12 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
+import android.provider.Settings
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -65,16 +69,34 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     private var activityCount = 0
 
     init {
-        System.loadLibrary("xsecure")
+        try {
+            System.loadLibrary("xsecure")
+        } catch (e: UnsatisfiedLinkError) {
+            // Native tidak tersedia – aplikasi tetap berjalan dengan fallback Java
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
 
-        // === LAYER 1 & 2: SECURITY CHECK (SIGNATURE + PROXY/VPN) - NATIVE ===
-        checkAndBlock()
-        startNativeMonitor()
-        // ====================================================================
+        // === SECURITY CHECK (DENGAN FALLBACK) ===
+        try {
+            checkAndBlock()
+        } catch (e: UnsatisfiedLinkError) {
+            // Native tidak ada, gunakan Java fallback
+            if (isProxyOrVpnActive()) {
+                clearAllCache()
+                Process.killProcess(Process.myPid())
+                return
+            }
+        }
+
+        try {
+            startNativeMonitor()
+        } catch (e: UnsatisfiedLinkError) {
+            // Native tidak ada – monitoring dilakukan oleh MainActivity
+        }
+        // =========================================
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -107,6 +129,28 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     private external fun startNativeMonitor()
     // =======================================================
 
+    // ==================== FALLBACK JAVA ====================
+    private fun isProxyOrVpnActive(): Boolean {
+        val proxyAddress = System.getProperty("http.proxyHost")
+            ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort")
+            ?: System.getProperty("https.proxyPort")
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
+
+        try {
+            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
+            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
+        } catch (e: Exception) {}
+
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
+        }
+        return false
+    }
+
     private fun clearAllCache() {
         try {
             cacheDir?.deleteRecursively()
@@ -117,6 +161,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             e.printStackTrace()
         }
     }
+    // ======================================================
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
