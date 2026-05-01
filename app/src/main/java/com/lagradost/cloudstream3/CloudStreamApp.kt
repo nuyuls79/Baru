@@ -5,8 +5,13 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
+import android.provider.Settings
+import android.util.Log
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -64,13 +69,35 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
+    init {
+        try {
+            System.loadLibrary("xsecure")
+            Log.d("CloudStreamApp", "✅ Native library loaded")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("CloudStreamApp", "❌ Failed to load native: ${e.message}")
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
 
-        // === NATIVE CALLS DIHILANGKAN SEMENTARA ===
-        // checkAndBlock()
-        // startNativeMonitor()
-        // =========================================
+        // === HANYA checkAndBlock, DENGAN LOG ===
+        try {
+            Log.d("CloudStreamApp", "⏳ Memanggil checkAndBlock()...")
+            checkAndBlock()
+            Log.d("CloudStreamApp", "✅ checkAndBlock() selesai (tidak terdeteksi)")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("CloudStreamApp", "❌ checkAndBlock() native tidak tersedia, fallback ke Java")
+            if (isProxyOrVpnActive()) {
+                Log.d("CloudStreamApp", "🛑 Proxy/VPN terdeteksi via Java, membersihkan cache & exit")
+                clearAllCache()
+                Process.killProcess(Process.myPid())
+                return
+            }
+        } catch (e: Exception) {
+            Log.e("CloudStreamApp", "❌ checkAndBlock() error: ${e.message}")
+        }
+        // ======================================
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -96,6 +123,29 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             exceptionHandler = it
             Thread.setDefaultUncaughtExceptionHandler(it)
         }
+    }
+
+    private external fun checkAndBlock()
+
+    private fun isProxyOrVpnActive(): Boolean {
+        val proxyAddress = System.getProperty("http.proxyHost")
+            ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort")
+            ?: System.getProperty("https.proxyPort")
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
+
+        try {
+            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
+            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
+        } catch (e: Exception) {}
+
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
+        }
+        return false
     }
 
     private fun clearAllCache() {
