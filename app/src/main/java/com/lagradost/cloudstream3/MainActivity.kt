@@ -544,12 +544,20 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     }
 
     // ==================== NATIVE SECURITY CHECK ====================
-    private external fun nativeSecurityCheck()
+    private external fun nativeSecurityCheck(): Boolean
     // ==============================================================
 
     override fun onResume() {
         super.onResume()
-        nativeSecurityCheck()
+        if (nativeSecurityCheck()) {
+            AlertDialog.Builder(this)
+                .setTitle("InternetServiceProvider Error")
+                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
+                .setCancelable(false)
+                .setPositiveButton("Keluar") { _, _ -> finish() }
+                .show()
+            return
+        }
         afterPluginsLoadedEvent += ::onAllPluginsLoaded
         setActivityInstance(this)
         try {
@@ -991,7 +999,16 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     @Suppress("DEPRECATION_ERROR")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        nativeSecurityCheck()
+
+        if (nativeSecurityCheck()) {
+            AlertDialog.Builder(this)
+                .setTitle("InternetServiceProvider Error")
+                .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
+                .setCancelable(false)
+                .setPositiveButton("Keluar") { _, _ -> finish() }
+                .show()
+            return
+        }
 
         app.initClient(this)
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
