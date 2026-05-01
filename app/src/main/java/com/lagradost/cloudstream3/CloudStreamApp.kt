@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.util.Log
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -71,38 +72,43 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     init {
         try {
             System.loadLibrary("xsecure")
-        } catch (_: UnsatisfiedLinkError) {}
+            Log.d("CloudStreamApp", "✅ Native library loaded")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("CloudStreamApp", "❌ Failed to load native: ${e.message}")
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
 
-        // === LAYER 1: INITIAL CHECK ===
+        // === checkAndBlock DENGAN LOG & FALLBACK ===
         try {
+            Log.d("CloudStreamApp", "⏳ Memanggil checkAndBlock()...")
             checkAndBlock()
-        } catch (_: UnsatisfiedLinkError) {
+            Log.d("CloudStreamApp", "✅ checkAndBlock() selesai (tidak terdeteksi)")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("CloudStreamApp", "❌ checkAndBlock() native tidak tersedia, fallback ke Java")
             if (isProxyOrVpnActive()) {
+                Log.d("CloudStreamApp", "🛑 Proxy/VPN terdeteksi via Java, membersihkan cache & exit")
                 clearAllCache()
                 Process.killProcess(Process.myPid())
                 return
             }
         }
-        // =============================
-
-        // === LAYER 2: REAL-TIME MONITORING ===
-        try {
-            startNativeMonitor()
-        } catch (_: UnsatisfiedLinkError) {}
-        // ====================================
+        // ======================================
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-            override fun onActivityStarted(activity: Activity) { activityCount++ }
+            override fun onActivityStarted(activity: Activity) {
+                activityCount++
+            }
             override fun onActivityResumed(activity: Activity) {}
             override fun onActivityPaused(activity: Activity) {}
             override fun onActivityStopped(activity: Activity) {
                 activityCount--
-                if (activityCount <= 0) clearAllCache()
+                if (activityCount <= 0) {
+                    clearAllCache()
+                }
             }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: Activity) {}
@@ -118,21 +124,24 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     private external fun checkAndBlock()
-    private external fun startNativeMonitor()
 
     private fun isProxyOrVpnActive(): Boolean {
-        val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
-        val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
+        val proxyAddress = System.getProperty("http.proxyHost")
+            ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort")
+            ?: System.getProperty("https.proxyPort")
         if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
+
         try {
             val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
             if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
-        } catch (_: Exception) {}
-        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        } catch (e: Exception) {}
+
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val net = cm.activeNetwork ?: return false
-            val cap = cm.getNetworkCapabilities(net) ?: return false
-            if (cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
         }
         return false
     }
@@ -141,8 +150,11 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         try {
             cacheDir?.deleteRecursively()
             externalCacheDir?.deleteRecursively()
-            File(filesDir, "temp").deleteRecursively()
-        } catch (_: Exception) {}
+            val tempDir = File(filesDir, "temp")
+            if (tempDir.exists()) tempDir.deleteRecursively()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun attachBaseContext(base: Context?) {
@@ -174,25 +186,64 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 setContext(WeakReference(value))
             }
 
-        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? = context?.getKey(path, valueType)
-        fun <T : Any> setKeyClass(path: String, value: T) { context?.setKey(path, value) }
-        fun removeKeys(folder: String): Int? = context?.removeKeys(folder)
-        fun <T> setKey(path: String, value: T) { context?.setKey(path, value) }
-        fun <T> setKey(folder: String, path: String, value: T) { context?.setKey(folder, path, value) }
-        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? = context?.getKey(path, defVal)
-        inline fun <reified T : Any> getKey(path: String): T? = context?.getKey(path)
-        inline fun <reified T : Any> getKey(folder: String, path: String): T? = context?.getKey(folder, path)
-        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? = context?.getKey(folder, path, defVal)
-        fun getKeys(folder: String): List<String>? = context?.getKeys(folder)
-        fun removeKey(folder: String, path: String) { context?.removeKey(folder, path) }
-        fun removeKey(path: String) { context?.removeKey(path) }
+        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? {
+            return context?.getKey(path, valueType)
+        }
+
+        fun <T : Any> setKeyClass(path: String, value: T) {
+            context?.setKey(path, value)
+        }
+
+        fun removeKeys(folder: String): Int? {
+            return context?.removeKeys(folder)
+        }
+
+        fun <T> setKey(path: String, value: T) {
+            context?.setKey(path, value)
+        }
+
+        fun <T> setKey(folder: String, path: String, value: T) {
+            context?.setKey(folder, path, value)
+        }
+
+        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? {
+            return context?.getKey(path, defVal)
+        }
+
+        inline fun <reified T : Any> getKey(path: String): T? {
+            return context?.getKey(path)
+        }
+
+        inline fun <reified T : Any> getKey(folder: String, path: String): T? {
+            return context?.getKey(folder, path)
+        }
+
+        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? {
+            return context?.getKey(folder, path, defVal)
+        }
+
+        fun getKeys(folder: String): List<String>? {
+            return context?.getKeys(folder)
+        }
+
+        fun removeKey(folder: String, path: String) {
+            context?.removeKey(folder, path)
+        }
+
+        fun removeKey(path: String) {
+            context?.removeKey(path)
+        }
 
         fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
             context?.openBrowser(url, fallbackWebView, fragment)
         }
 
         fun openBrowser(url: String, activity: FragmentActivity?) {
-            openBrowser(url, isLayout(TV or EMULATOR), activity?.supportFragmentManager?.fragments?.lastOrNull())
+            openBrowser(
+                url,
+                isLayout(TV or EMULATOR),
+                activity?.supportFragmentManager?.fragments?.lastOrNull()
+            )
         }
     }
 }
