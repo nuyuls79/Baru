@@ -10,12 +10,8 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.util.AttributeSet
 import android.util.Log
 import android.view.Gravity
@@ -547,12 +543,16 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         override fun onSessionResuming(session: Session, s: String) {}
     }
 
+    // ==================== NATIVE METHOD DETEKSI PROXY/VPN ====================
+    private external fun isProxyOrVpnActive(context: Context): Boolean
+    // =======================================================================
+
     override fun onResume() {
         super.onResume()
         // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
-        if (isProxyActive() || isVpnActive()) {
+        if (isProxyOrVpnActive(this)) {
             AlertDialog.Builder(this)
-                .setTitle("InternetServiceProvider Errori")
+                .setTitle("InternetServiceProvider Error")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
                 .setCancelable(false)
                 .setPositiveButton("Keluar") { _, _ -> finish() }
@@ -998,44 +998,14 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         }
     }
 
-    // ==================== DETEKSI PROXY & VPN ====================
-    private fun isProxyActive(): Boolean {
-        // Cek lewat system properties
-        val proxyAddress = System.getProperty("http.proxyHost")
-            ?: System.getProperty("https.proxyHost")
-        val proxyPort = System.getProperty("http.proxyPort")
-            ?: System.getProperty("https.proxyPort")
-        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) {
-            return true
-        }
-        // Cek lewat Settings.Global (lebih akurat)
-        return try {
-            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
-            !httpProxy.isNullOrBlank() && httpProxy != ":0"
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun isVpnActive(): Boolean {
-        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val activeNetwork = connectivityManager.activeNetwork ?: return false
-            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-        }
-        return false
-    }
-    // ============================================================
-
     @Suppress("DEPRECATION_ERROR")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // === DETEKSI PROXY/VPN SAAT PERTAMA KALI DIBUKA ===
-        if (isProxyActive() || isVpnActive()) {
+        if (isProxyOrVpnActive(this)) {
             AlertDialog.Builder(this)
-                .setTitle("InternetServiceProvider Errori")
+                .setTitle("InternetServiceProvider Error")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
                 .setCancelable(false)
                 .setPositiveButton("Keluar") { _, _ -> finish() }
