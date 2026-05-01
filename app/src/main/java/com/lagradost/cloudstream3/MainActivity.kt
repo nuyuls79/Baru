@@ -549,6 +549,13 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     override fun onResume() {
         super.onResume()
+        // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
+        if (isProxyActive() || isVpnActive()) {
+            Toast.makeText(this, "Proxy/VPN terdeteksi, aplikasi tidak dapat berjalan", Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        // =====================================================================
         afterPluginsLoadedEvent += ::onAllPluginsLoaded
         setActivityInstance(this)
         try {
