@@ -39,12 +39,12 @@ object RepoProtector {
     fun getPremiumRepoUrl(): String = try {
         nativeGetPremiumRepoUrl()
     } catch (e: Throwable) {
-        xorDecrypt(BuildConfig.PREMIUM_REPO_ENCODED)
+        xorDecrypt(BuildConfig.PREMIUM_REPO_XOR)   // <-- UBAH KE PREMIUM_REPO_XOR
     }
 
     fun getFreeRepoUrl(): String = try {
         nativeGetFreeRepoUrl()
     } catch (e: Throwable) {
-        xorDecrypt(BuildConfig.FREE_REPO_ENCODED)
+        xorDecrypt(BuildConfig.FREE_REPO_XOR)       // <-- UBAH KE FREE_REPO_XOR
     }
 }
