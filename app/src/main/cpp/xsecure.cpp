@@ -156,7 +156,7 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
     return env->NewStringUTF(decoded.c_str());
 }
 
-// ==================== SIGNATURE CHECK ====================
+// ==================== SIGNATURE CHECK (DIPINDAHKAN KE ATAS) ====================
 JNIEXPORT jboolean JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValid(JNIEnv* env, jclass, jobject context) {
     jclass contextClass = env->GetObjectClass(context);
@@ -259,10 +259,10 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValid(JNIEnv* env, jcl
     }
 }
 
-// ==================== INITIAL CHECK ====================
+// ==================== INITIAL CHECK (Sekarang aman karena isSignatureValid sudah dideklarasikan) ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_checkAndBlock(JNIEnv* env, jobject thiz) {
-    if (!isSignatureValid(env, thiz)) {
+    if (!Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValid(env, nullptr, thiz)) {
         clearAllCache(env, thiz);
         exit(0);
     }
