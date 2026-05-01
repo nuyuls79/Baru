@@ -68,13 +68,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Security Block Activity (Anti Proxy/VPN) -->
-        <activity
-            android:name=".SecurityBlockActivity"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
-            android:excludeFromRecents="true"
-            android:noHistory="true" />
-
         <activity
             android:name=".ui.player.DownloadedPlayerActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
