@@ -543,21 +543,23 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         override fun onSessionResuming(session: Session, s: String) {}
     }
 
-    // ==================== NATIVE SECURITY CHECK ====================
-    private external fun nativeSecurityCheck(): Boolean
-    // ==============================================================
+    // ==================== NATIVE METHOD DETEKSI PROXY/VPN ====================
+    private external fun isProxyOrVpnActive(context: Context): Boolean
+    // =======================================================================
 
     override fun onResume() {
         super.onResume()
-        if (nativeSecurityCheck()) {
+        // === DETEKSI PROXY/VPN SETIAP KALI APLIKASI KEMBALI KE FOREGROUND ===
+        if (isProxyOrVpnActive(this)) {
             AlertDialog.Builder(this)
-                .setTitle("InternetServiceProvider Error")
+                .setTitle("Keamanan")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
                 .setCancelable(false)
                 .setPositiveButton("Keluar") { _, _ -> finish() }
                 .show()
             return
         }
+        // =====================================================================
         afterPluginsLoadedEvent += ::onAllPluginsLoaded
         setActivityInstance(this)
         try {
@@ -1000,15 +1002,17 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (nativeSecurityCheck()) {
+        // === DETEKSI PROXY/VPN SAAT PERTAMA KALI DIBUKA ===
+        if (isProxyOrVpnActive(this)) {
             AlertDialog.Builder(this)
-                .setTitle("InternetServiceProvider Error")
+                .setTitle("Keamanan")
                 .setMessage("Maaf, jaringan Anda terganggu. Aplikasi tidak dapat berjalan.")
                 .setCancelable(false)
                 .setPositiveButton("Keluar") { _, _ -> finish() }
                 .show()
             return
         }
+        // ===================================================
 
         app.initClient(this)
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
