@@ -5,13 +5,8 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
-import android.os.Process
-import android.provider.Settings
-import android.util.Log
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -69,43 +64,12 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    init {
-        try {
-            System.loadLibrary("xsecure")
-            Log.d("CloudStreamApp", "Native library loaded successfully")
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e("CloudStreamApp", "Failed to load native library: ${e.message}")
-        }
-    }
-
     override fun onCreate() {
         super.onCreate()
 
-        Log.d("CloudStreamApp", "onCreate started")
-
-        // === DEBUG: CHECK AND BLOCK DISABLED ===
-        // Untuk memastikan aplikasi bisa masuk, kita nonaktifkan dulu
-        // Jika aplikasi sudah berjalan normal, aktifkan kembali dengan menghapus komentar di bawah
-        /*
-        try {
-            checkAndBlock()
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e("CloudStreamApp", "checkAndBlock failed: ${e.message}")
-            if (isProxyOrVpnActive()) {
-                clearAllCache()
-                Process.killProcess(Process.myPid())
-            }
-        }
-        */
-
-        // === MONITORING REAL-TIME (NATIVE + FALLBACK) ===
-        try {
-            startNativeMonitor()
-            Log.d("CloudStreamApp", "startNativeMonitor successful")
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e("CloudStreamApp", "startNativeMonitor failed: ${e.message}")
-            // Fallback: tidak melakukan apa-apa, monitoring diserahkan ke MainActivity
-        }
+        // === NATIVE CALLS DIHILANGKAN SEMENTARA ===
+        // checkAndBlock()
+        // startNativeMonitor()
         // =========================================
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
@@ -132,35 +96,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             exceptionHandler = it
             Thread.setDefaultUncaughtExceptionHandler(it)
         }
-
-        Log.d("CloudStreamApp", "onCreate finished")
-    }
-
-    // ==================== NATIVE METHODS ====================
-    private external fun checkAndBlock()
-    private external fun startNativeMonitor()
-    // =======================================================
-
-    // ==================== FALLBACK JAVA ====================
-    private fun isProxyOrVpnActive(): Boolean {
-        val proxyAddress = System.getProperty("http.proxyHost")
-            ?: System.getProperty("https.proxyHost")
-        val proxyPort = System.getProperty("http.proxyPort")
-            ?: System.getProperty("https.proxyPort")
-        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
-
-        try {
-            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
-            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
-        } catch (e: Exception) {}
-
-        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val activeNetwork = connectivityManager.activeNetwork ?: return false
-            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
-        }
-        return false
     }
 
     private fun clearAllCache() {
@@ -173,7 +108,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             e.printStackTrace()
         }
     }
-    // ======================================================
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
