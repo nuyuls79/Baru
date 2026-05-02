@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.util.Base64
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -70,33 +71,24 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // 🔒 HASH ASLI (HEX FORMAT) - Sesuai dengan gambar Apktool M Anda
-    private val ORIGINAL_SIGNATURE = "adbab954eaf86820b932b17436df2703ea1bddbf9caef0886d816041895e18dc"
+    // Masukkan hasil SHA-256 asli Anda di sini
+    private val ORIGINAL_SIGNATURE = "ISI_DENGAN_HASH_SHA256_ANDA"
 
     override fun onCreate() {
         super.onCreate()
 
-        // === SECURITY CHECKPOINT ===
-        
-        // Skip proteksi jika sedang dalam mode Debug Android Studio
-        if (!BuildConfig.DEBUG) {
-            // 1. Cek Integritas Tanda Tangan (Signature)
-            if (!isSignatureValid()) {
-                performSilentKill()
-                return
-            }
+        // === LAYER 1: INTEGRITY CHECK (SIGNATURE) ===
+        // Mencegah aplikasi dijalankan jika sudah di-mod/re-sign
+        if (!isSignatureValid()) {
+            performSilentKill()
+            return
+        }
 
-            // 2. Cek Residu Alat Modifikasi (MT Manager/NP Manager)
-            if (isModifiedByTool()) {
-                performSilentKill()
-                return
-            }
-
-            // 3. Cek Koneksi Tidak Aman (Proxy/VPN)
-            if (isProxyOrVpnActive()) {
-                performSilentKill()
-                return
-            }
+        // === LAYER 2: NETWORK SECURITY (PROXY/VPN) ===
+        // Mencegah penggunaan aplikasi capture data
+        if (isProxyOrVpnActive()) {
+            performSilentKill()
+            return
         }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
@@ -126,11 +118,11 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     /**
-     * Verifikasi Signature menggunakan format Hexadecimal agar cocok dengan Apktool M.
+     * Memverifikasi apakah tanda tangan APK cocok dengan versi asli.
      */
     private fun isSignatureValid(): Boolean {
-        if (ORIGINAL_SIGNATURE.isBlank()) return true
-
+        if (ORIGINAL_SIGNATURE.isEmpty() || ORIGINAL_SIGNATURE == "ISI_DENGAN_HASH_SHA256_ANDA") return true // Bypass jika belum diset
+        
         try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
@@ -149,16 +141,8 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             signatures?.forEach { sig ->
                 val md = MessageDigest.getInstance("SHA-256")
                 md.update(sig.toByteArray())
-                val digest = md.digest()
-                
-                // Konversi byte ke Hex String (Lowercase)
-                val currentSignature = digest.joinToString("") { 
-                    String.format("%02x", it) 
-                }
-
-                if (ORIGINAL_SIGNATURE.trim().equals(currentSignature, ignoreCase = true)) {
-                    return true
-                }
+                val currentSignature = Base64.encodeToString(md.digest(), Base64.NO_WRAP)
+                if (ORIGINAL_SIGNATURE == currentSignature) return true
             }
         } catch (e: Exception) {
             return false
@@ -166,30 +150,19 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         return false
     }
 
-    /**
-     * Deteksi file yang disuntikkan alat modifikasi untuk bypass signature.
-     */
-    private fun isModifiedByTool(): Boolean {
-        val suspiciousFiles = listOf("assets/pms", "assets/mg.pms", "assets/mt.pms")
-        for (filePath in suspiciousFiles) {
-            try {
-                assets.open(filePath).use { it.close() }
-                return true 
-            } catch (_: Exception) {}
-        }
-        return false
-    }
-
     private fun isProxyOrVpnActive(): Boolean {
+        // Cek System Properties (untuk Proxy)
         val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
         val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
         if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
 
+        // Cek Global Settings
         try {
             val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
             if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
         } catch (e: Exception) {}
 
+        // Cek Connectivity Manager (untuk VPN)
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
@@ -199,6 +172,9 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         return false
     }
 
+    /**
+     * Mematikan aplikasi secara bersih dan menghapus cache agar data capture tidak tersisa.
+     */
     private fun performSilentKill() {
         clearAllCache()
         Process.killProcess(Process.myPid())
@@ -245,18 +221,53 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 setContext(WeakReference(value))
             }
 
-        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? = context?.getKey(path, valueType)
-        fun <T : Any> setKeyClass(path: String, value: T) { context?.setKey(path, value) }
-        fun removeKeys(folder: String): Int? = context?.removeKeys(folder)
-        fun <T> setKey(path: String, value: T) { context?.setKey(path, value) }
-        fun <T> setKey(folder: String, path: String, value: T) { context?.setKey(folder, path, value) }
-        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? = context?.getKey(path, defVal)
-        inline fun <reified T : Any> getKey(path: String): T? = context?.getKey(path)
-        inline fun <reified T : Any> getKey(folder: String, path: String): T? = context?.getKey(folder, path)
-        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? = context?.getKey(folder, path, defVal)
-        fun getKeys(folder: String): List<String>? = context?.getKeys(folder)
-        fun removeKey(folder: String, path: String) { context?.removeKey(folder, path) }
-        fun removeKey(path: String) { context?.removeKey(path) }
+        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? {
+            return context?.getKey(path, valueType)
+        }
+
+        fun <T : Any> setKeyClass(path: String, value: T) {
+            context?.setKey(path, value)
+        }
+
+        fun removeKeys(folder: String): Int? {
+            return context?.removeKeys(folder)
+        }
+
+        fun <T> setKey(path: String, value: T) {
+            context?.setKey(path, value)
+        }
+
+        fun <T> setKey(folder: String, path: String, value: T) {
+            context?.setKey(folder, path, value)
+        }
+
+        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? {
+            return context?.getKey(path, defVal)
+        }
+
+        inline fun <reified T : Any> getKey(path: String): T? {
+            return context?.getKey(path)
+        }
+
+        inline fun <reified T : Any> getKey(folder: String, path: String): T? {
+            return context?.getKey(folder, path)
+        }
+
+        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? {
+            return context?.getKey(folder, path, defVal)
+        }
+
+        fun getKeys(folder: String): List<String>? {
+            return context?.getKeys(folder)
+        }
+
+        fun removeKey(folder: String, path: String) {
+            context?.removeKey(folder, path)
+        }
+
+        fun removeKey(path: String) {
+            context?.removeKey(path)
+        }
 
         fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
             context?.openBrowser(url, fallbackWebView, fragment)
