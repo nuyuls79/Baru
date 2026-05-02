@@ -6,8 +6,6 @@
 #include <chrono>
 #include <stdlib.h>
 
-// ==================== UTILITY: BASE64 DECODE ====================
-// Digunakan untuk menyembunyikan URL Repo agar tidak terbaca sebagai teks biasa
 static const std::string base64_chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz"
@@ -49,70 +47,16 @@ std::string base64_decode(const std::string &encoded_string) {
     return ret;
 }
 
-// ==================== SECURITY CORE: SIGNATURE VALIDATION ====================
-// Hash SHA-256 dalam format huruf kecil tanpa pemisah sesuai data Termux Anda
-static const char* EXPECTED_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc";
-
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValidNative(JNIEnv* env, jobject thiz, jobject context) {
-    jclass contextClass = env->GetObjectClass(context);
-    jmethodID getPackageManager = env->GetMethodID(contextClass, "getPackageManager", "()Landroid/content/pm/PackageManager;");
-    jobject packageManager = env->CallObjectMethod(context, getPackageManager);
-
-    jmethodID getPackageName = env->GetMethodID(contextClass, "getPackageName", "()Ljava/lang/String;");
-    jstring packageName = (jstring)env->CallObjectMethod(context, getPackageName);
-
-    jclass pmClass = env->GetObjectClass(packageManager);
-    jmethodID getPackageInfo = env->GetMethodID(pmClass, "getPackageInfo", "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
-    
-    // 0x08000000 = GET_SIGNING_CERTIFICATES (Wajib untuk Android 9+)
-    jobject packageInfo = env->CallObjectMethod(packageManager, getPackageInfo, packageName, 0x08000000);
-    if (packageInfo == nullptr) return JNI_FALSE;
-
-    jclass piClass = env->GetObjectClass(packageInfo);
-    jfieldID siField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
-    jobject signingInfo = env->GetObjectField(packageInfo, siField);
-    
-    jclass siClass = env->GetObjectClass(signingInfo);
-    jmethodID getSigners = env->GetMethodID(siClass, "getApkContentsSigners", "()[Landroid/content/pm/Signature;");
-    jobjectArray signatures = (jobjectArray)env->CallObjectMethod(signingInfo, getSigners);
-
-    jobject sig = env->GetObjectArrayElement(signatures, 0);
-    jclass sigClass = env->GetObjectClass(sig);
-    jmethodID toByteAddr = env->GetMethodID(sigClass, "toByteArray", "()[B");
-    jbyteArray sigBytes = (jbyteArray)env->CallObjectMethod(sig, toByteAddr);
-
-    // Proses hashing SHA-256 melalui JNI
-    jclass mdClass = env->FindClass("java/security/MessageDigest");
-    jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance", "(Ljava/lang/String;)Ljava/security/MessageDigest;");
-    jobject md = env->CallStaticObjectMethod(mdClass, getInstance, env->NewStringUTF("SHA-256"));
-    jmethodID update = env->GetMethodID(mdClass, "update", "([B)V");
-    env->CallVoidMethod(md, update, sigBytes);
-    jmethodID digest = env->GetMethodID(mdClass, "digest", "()[B");
-    jbyteArray hashBytes = (jbyteArray)env->CallObjectMethod(md, digest);
-
-    // Konversi byte array ke Hex String (Kecil)
-    jint hashLen = env->GetArrayLength(hashBytes);
-    jbyte* buffer = env->GetByteArrayElements(hashBytes, nullptr);
-    char hexResult[65];
-    for (int i = 0; i < hashLen; i++) {
-        sprintf(&hexResult[i * 2], "%02x", (unsigned char)buffer[i]);
-    }
-    hexResult[64] = '\0';
-    env->ReleaseByteArrayElements(hashBytes, buffer, JNI_ABORT);
-
-    return (strcmp(hexResult, EXPECTED_SIGNATURE) == 0) ? JNI_TRUE : JNI_FALSE;
-}
-
-// ==================== SECURITY CORE: PROXY/VPN DETECTION ====================
+// ==================== FUNGSI DETEKSI PROXY/VPN ====================
 static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
+    // 1. Cek proxy dari Settings.Global
     jclass settingsClass = env->FindClass("android/provider/Settings$Global");
     jmethodID getString = env->GetStaticMethodID(settingsClass, "getString",
         "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;");
     jclass contextClass = env->GetObjectClass(context);
-    jmethodID getContentResolver = env->GetMethodID(contextClass, "getContentResolver", "()Landroid/content/ContentResolver;");
+    jmethodID getContentResolver = env->GetMethodID(contextClass, "getContentResolver",
+        "()Landroid/content/ContentResolver;");
     jobject contentResolver = env->CallObjectMethod(context, getContentResolver);
-    
     jstring httpProxy = (jstring)env->CallStaticObjectMethod(settingsClass, getString,
         contentResolver, env->NewStringUTF("http_proxy"));
 
@@ -123,60 +67,202 @@ static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
         if (proxyActive) return true;
     }
 
+    // 2. Cek VPN dari ConnectivityManager
     jclass connectivityClass = env->FindClass("android/net/ConnectivityManager");
-    jmethodID getSystemService = env->GetMethodID(contextClass, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+    jmethodID getSystemService = env->GetMethodID(contextClass, "getSystemService",
+        "(Ljava/lang/String;)Ljava/lang/Object;");
     jstring connectivityService = env->NewStringUTF("connectivity");
-    jobject connectivityManager = env->CallObjectMethod(context, getSystemService, connectivityService);
+    jobject connectivityManager = env->CallObjectMethod(context, getSystemService,
+        connectivityService);
+    env->DeleteLocalRef(connectivityService);
 
     if (connectivityManager != nullptr) {
-        jmethodID getActiveNetwork = env->GetMethodID(connectivityClass, "getActiveNetwork", "()Landroid/net/Network;");
+        jmethodID getActiveNetwork = env->GetMethodID(connectivityClass, "getActiveNetwork",
+            "()Landroid/net/Network;");
         jobject activeNetwork = env->CallObjectMethod(connectivityManager, getActiveNetwork);
         if (activeNetwork != nullptr) {
-            jmethodID getNetworkCapabilities = env->GetMethodID(connectivityClass, "getNetworkCapabilities", "(Landroid/net/Network;)Landroid/net/NetworkCapabilities;");
-            jobject capabilities = env->CallObjectMethod(connectivityManager, getNetworkCapabilities, activeNetwork);
+            jmethodID getNetworkCapabilities = env->GetMethodID(connectivityClass,
+                "getNetworkCapabilities",
+                "(Landroid/net/Network;)Landroid/net/NetworkCapabilities;");
+            jobject capabilities = env->CallObjectMethod(connectivityManager,
+                getNetworkCapabilities, activeNetwork);
             if (capabilities != nullptr) {
-                jclass netCapClass = env->FindClass("android/net/NetworkCapabilities");
-                jmethodID hasTransport = env->GetMethodID(netCapClass, "hasTransport", "(I)Z");
-                if (env->CallBooleanMethod(capabilities, hasTransport, 4)) return true; // 4 = TRANSPORT_VPN
+                jclass networkCapabilitiesClass = env->FindClass("android/net/NetworkCapabilities");
+                jmethodID hasTransport = env->GetMethodID(networkCapabilitiesClass, "hasTransport", "(I)Z");
+                jboolean hasVpn = env->CallBooleanMethod(capabilities, hasTransport, 4);
+                if (hasVpn) return true;
             }
         }
     }
     return false;
 }
 
-// ==================== ACTIONS: CACHE MANAGEMENT ====================
+// ==================== CLEAR CACHE ====================
 static void clearAllCache(JNIEnv* env, jobject context) {
     jclass contextClass = env->GetObjectClass(context);
     jmethodID getCacheDir = env->GetMethodID(contextClass, "getCacheDir", "()Ljava/io/File;");
     jobject cacheDir = env->CallObjectMethod(context, getCacheDir);
+    
     if (cacheDir != nullptr) {
         jclass fileClass = env->FindClass("java/io/File");
-        jmethodID deleteRec = env->GetMethodID(fileClass, "deleteRecursively", "()Z");
-        env->CallBooleanMethod(cacheDir, deleteRec);
+        jmethodID deleteRecursively = env->GetMethodID(fileClass, "deleteRecursively", "()Z");
+        env->CallBooleanMethod(cacheDir, deleteRecursively);
+    }
+    
+    jmethodID getExternalCacheDir = env->GetMethodID(contextClass, "getExternalCacheDir", "()Ljava/io/File;");
+    jobject externalCacheDir = env->CallObjectMethod(context, getExternalCacheDir);
+    if (externalCacheDir != nullptr) {
+        jclass fileClass = env->FindClass("java/io/File");
+        jmethodID deleteRecursively = env->GetMethodID(fileClass, "deleteRecursively", "()Z");
+        env->CallBooleanMethod(externalCacheDir, deleteRecursively);
     }
 }
 
-// ==================== JNI EXPORTS ====================
+// ==================== THREAD UNTUK MONITORING REAL-TIME ====================
+static void startMonitoringThread(JNIEnv* env, jobject context) {
+    JavaVM* jvm;
+    env->GetJavaVM(&jvm);
+    
+    std::thread([jvm, context]() {
+        JNIEnv* monitorEnv;
+        jvm->AttachCurrentThread(&monitorEnv, nullptr);
+        
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+            
+            if (isProxyOrVpnActive(monitorEnv, context)) {
+                clearAllCache(monitorEnv, context);
+                jvm->DetachCurrentThread();
+                exit(0);
+            }
+        }
+    }).detach();
+}
+
 extern "C" {
 
-// Proteksi URL Repo (Tetap dipertahankan fungsinya)
-static const char* ENC_PREMIUM = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24=";
-static const char* ENC_FREE    = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg==";
+static const char* ENCODED_PREMIUM_REPO = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24=";
+static const char* ENCODED_FREE_REPO    = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg==";
 
 JNIEXPORT jstring JNICALL
 Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetPremiumRepoUrl(JNIEnv* env, jclass) {
-    return env->NewStringUTF(base64_decode(ENC_PREMIUM).c_str());
+    std::string decoded = base64_decode(ENCODED_PREMIUM_REPO);
+    return env->NewStringUTF(decoded.c_str());
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv* env, jclass) {
-    return env->NewStringUTF(base64_decode(ENC_FREE).c_str());
+    std::string decoded = base64_decode(ENCODED_FREE_REPO);
+    return env->NewStringUTF(decoded.c_str());
 }
 
-// Fungsi pengecekan sekaligus pemblokiran (Integrasi Signature & Proxy)
+// ==================== SIGNATURE CHECK (DIPINDAHKAN KE ATAS) ====================
+JNIEXPORT jboolean JNICALL
+Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValid(JNIEnv* env, jclass, jobject context) {
+    jclass contextClass = env->GetObjectClass(context);
+    jmethodID getPackageName = env->GetMethodID(contextClass, "getPackageName", "()Ljava/lang/String;");
+    jstring packageName = (jstring)env->CallObjectMethod(context, getPackageName);
+    const char* packageNameStr = env->GetStringUTFChars(packageName, nullptr);
+
+    jmethodID getPackageManager = env->GetMethodID(contextClass, "getPackageManager", "()Landroid/content/pm/PackageManager;");
+    jobject packageManager = env->CallObjectMethod(context, getPackageManager);
+
+    jclass pmClass = env->GetObjectClass(packageManager);
+    jmethodID getPackageInfo = env->GetMethodID(pmClass, "getPackageInfo", "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
+    
+    jint flags = 0x00000001; // GET_SIGNATURES
+    if (env->GetStaticIntField(env->FindClass("android/os/Build$VERSION"), env->GetStaticFieldID(env->FindClass("android/os/Build$VERSION"), "SDK_INT", "I")) >= 28) {
+        flags = 0x08000000; // GET_SIGNING_CERTIFICATES
+    }
+    
+    jobject packageInfo = env->CallObjectMethod(packageManager, getPackageInfo, packageName, flags);
+    env->ReleaseStringUTFChars(packageName, packageNameStr);
+    
+    if (packageInfo == nullptr) return JNI_FALSE;
+
+    jclass piClass = env->GetObjectClass(packageInfo);
+    
+    const char* ORIGINAL_SIGNATURE = "B115983AB9DFFA173EE350FEE7A6EEF515CBB16D0D06C4054579CDC6487E68FC";
+    
+    if (flags == 0x08000000) {
+        jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
+        jobject signingInfo = env->GetObjectField(packageInfo, signingInfoField);
+        if (signingInfo == nullptr) return JNI_FALSE;
+        
+        jclass siClass = env->GetObjectClass(signingInfo);
+        jmethodID getApkContentsSigners = env->GetMethodID(siClass, "getApkContentsSigners", "()[Landroid/content/pm/Signature;");
+        jobjectArray signatures = (jobjectArray)env->CallObjectMethod(signingInfo, getApkContentsSigners);
+        
+        if (signatures == nullptr) return JNI_FALSE;
+        
+        jint len = env->GetArrayLength(signatures);
+        for (int i = 0; i < len; i++) {
+            jobject sig = env->GetObjectArrayElement(signatures, i);
+            jclass sigClass = env->GetObjectClass(sig);
+            jmethodID toByteArray = env->GetMethodID(sigClass, "toByteArray", "()[B");
+            jbyteArray sigBytes = (jbyteArray)env->CallObjectMethod(sig, toByteArray);
+            
+            jclass mdClass = env->FindClass("java/security/MessageDigest");
+            jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance", "(Ljava/lang/String;)Ljava/security/MessageDigest;");
+            jobject md = env->CallStaticObjectMethod(mdClass, getInstance, env->NewStringUTF("SHA-256"));
+            
+            jmethodID update = env->GetMethodID(mdClass, "update", "([B)V");
+            env->CallVoidMethod(md, update, sigBytes);
+            
+            jmethodID digest = env->GetMethodID(mdClass, "digest", "()[B");
+            jbyteArray digestBytes = (jbyteArray)env->CallObjectMethod(md, digest);
+            
+            jclass base64Class = env->FindClass("android/util/Base64");
+            jmethodID encodeToString = env->GetStaticMethodID(base64Class, "encodeToString", "([BI)Ljava/lang/String;");
+            jstring signatureStr = (jstring)env->CallStaticObjectMethod(base64Class, encodeToString, digestBytes, 2);
+            
+            const char* sigStr = env->GetStringUTFChars(signatureStr, nullptr);
+            bool matches = (strcmp(sigStr, ORIGINAL_SIGNATURE) == 0);
+            env->ReleaseStringUTFChars(signatureStr, sigStr);
+            
+            if (matches) return JNI_TRUE;
+        }
+        return JNI_FALSE;
+    } else {
+        jfieldID signaturesField = env->GetFieldID(piClass, "signatures", "[Landroid/content/pm/Signature;");
+        jobjectArray signatures = (jobjectArray)env->GetObjectField(packageInfo, signaturesField);
+        if (signatures == nullptr) return JNI_FALSE;
+        
+        jint len = env->GetArrayLength(signatures);
+        for (int i = 0; i < len; i++) {
+            jobject sig = env->GetObjectArrayElement(signatures, i);
+            jclass sigClass = env->GetObjectClass(sig);
+            jmethodID toByteArray = env->GetMethodID(sigClass, "toByteArray", "()[B");
+            jbyteArray sigBytes = (jbyteArray)env->CallObjectMethod(sig, toByteArray);
+            
+            jclass mdClass = env->FindClass("java/security/MessageDigest");
+            jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance", "(Ljava/lang/String;)Ljava/security/MessageDigest;");
+            jobject md = env->CallStaticObjectMethod(mdClass, getInstance, env->NewStringUTF("SHA-256"));
+            
+            jmethodID update = env->GetMethodID(mdClass, "update", "([B)V");
+            env->CallVoidMethod(md, update, sigBytes);
+            
+            jmethodID digest = env->GetMethodID(mdClass, "digest", "()[B");
+            jbyteArray digestBytes = (jbyteArray)env->CallObjectMethod(md, digest);
+            
+            jclass base64Class = env->FindClass("android/util/Base64");
+            jmethodID encodeToString = env->GetStaticMethodID(base64Class, "encodeToString", "([BI)Ljava/lang/String;");
+            jstring signatureStr = (jstring)env->CallStaticObjectMethod(base64Class, encodeToString, digestBytes, 2);
+            
+            const char* sigStr = env->GetStringUTFChars(signatureStr, nullptr);
+            bool matches = (strcmp(sigStr, ORIGINAL_SIGNATURE) == 0);
+            env->ReleaseStringUTFChars(signatureStr, sigStr);
+            
+            if (matches) return JNI_TRUE;
+        }
+        return JNI_FALSE;
+    }
+}
+
+// ==================== INITIAL CHECK (Sekarang aman karena isSignatureValid sudah dideklarasikan) ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_checkAndBlock(JNIEnv* env, jobject thiz) {
-    if (!Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValidNative(env, thiz, thiz)) {
+    if (!Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValid(env, nullptr, thiz)) {
         clearAllCache(env, thiz);
         exit(0);
     }
@@ -186,24 +272,10 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_checkAndBlock(JNIEnv* env, jobjec
     }
 }
 
-// Monitoring Real-time di background thread (3 detik sekali)
+// ==================== START NATIVE MONITORING ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_startNativeMonitor(JNIEnv* env, jobject thiz) {
-    JavaVM* jvm;
-    env->GetJavaVM(&jvm);
-    jobject globalContext = env->NewGlobalRef(thiz);
-
-    std::thread([jvm, globalContext]() {
-        JNIEnv* mEnv;
-        jvm->AttachCurrentThread(&mEnv, nullptr);
-        while (true) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-            if (isProxyOrVpnActive(mEnv, globalContext)) {
-                clearAllCache(mEnv, globalContext);
-                exit(0);
-            }
-        }
-    }).detach();
+    startMonitoringThread(env, thiz);
 }
 
 } // extern "C"
