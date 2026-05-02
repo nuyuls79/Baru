@@ -10,8 +10,6 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.os.Process
 import android.provider.Settings
 import androidx.fragment.app.Fragment
@@ -75,18 +73,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     // 🔒 HASH TERBARU DARI TERMUX (Gunakan huruf kecil semua)
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
-    // Real-time monitoring handler & runnable
-    private val monitorHandler = Handler(Looper.getMainLooper())
-    private val monitorRunnable = object : Runnable {
-        override fun run() {
-            if (isProxyOrVpnActive()) {
-                performSilentKill()
-            } else {
-                monitorHandler.postDelayed(this, 1000) // cek setiap 1 detik
-            }
-        }
-    }
-
     override fun onCreate() {
         super.onCreate()
 
@@ -107,14 +93,11 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             }
         }
 
-        // 3. Deteksi VPN/Proxy saat startup
+        // 3. Deteksi VPN/Proxy (Opsional: bisa dimasukkan ke dalam blok !BuildConfig.DEBUG jika mau)
         if (isProxyOrVpnActive()) {
             performSilentKill()
             return
         }
-
-        // 4. Mulai monitoring real-time (interval 1 detik)
-        monitorHandler.postDelayed(monitorRunnable, 1000)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -211,8 +194,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     private fun performSilentKill() {
-        // Hentikan monitoring agar tidak terjadi loop
-        monitorHandler.removeCallbacks(monitorRunnable)
         clearAllCache()
         Process.killProcess(Process.myPid())
         exitProcess(0)
