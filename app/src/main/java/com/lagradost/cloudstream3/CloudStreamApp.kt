@@ -75,6 +75,59 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
+    // ==================== LOAD NATIVE ====================
+    companion object {
+        init {
+            System.loadLibrary("xsecure")
+        }
+
+        var exceptionHandler: ExceptionHandler? = null
+
+        tailrec fun Context.getActivity(): Activity? {
+            return when (this) {
+                is Activity -> this
+                is ContextWrapper -> baseContext.getActivity()
+                else -> null
+            }
+        }
+
+        private var _context: WeakReference<Context>? = null
+        var context
+            get() = _context?.get()
+            private set(value) {
+                _context = WeakReference(value)
+                setContext(WeakReference(value))
+            }
+
+        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? = context?.getKey(path, valueType)
+        fun <T : Any> setKeyClass(path: String, value: T) { context?.setKey(path, value) }
+        fun removeKeys(folder: String): Int? = context?.removeKeys(folder)
+        fun <T> setKey(path: String, value: T) { context?.setKey(path, value) }
+        fun <T> setKey(folder: String, path: String, value: T) { context?.setKey(folder, path, value) }
+        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? = context?.getKey(path, defVal)
+        inline fun <reified T : Any> getKey(path: String): T? = context?.getKey(path)
+        inline fun <reified T : Any> getKey(folder: String, path: String): T? = context?.getKey(folder, path)
+        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? = context?.getKey(folder, path, defVal)
+        fun getKeys(folder: String): List<String>? = context?.getKeys(folder)
+        fun removeKey(folder: String, path: String) { context?.removeKey(folder, path) }
+        fun removeKey(path: String) { context?.removeKey(path) }
+
+        fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
+            context?.openBrowser(url, fallbackWebView, fragment)
+        }
+
+        fun openBrowser(url: String, activity: FragmentActivity?) {
+            openBrowser(
+                url,
+                isLayout(TV or EMULATOR),
+                activity?.supportFragmentManager?.fragments?.lastOrNull()
+            )
+        }
+    }
+
+    // ==================== NATIVE FUNCTION ====================
+    external fun getSecurityScoreNative(): Int
+
     private val monitorHandler = Handler(Looper.getMainLooper())
 
     private val monitorRunnable = object : Runnable {
@@ -91,10 +144,9 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         super.onCreate()
 
         if (!BuildConfig.DEBUG) {
-            val sec = getSecurityScore()
+            val sec = getSecurityScoreNative()
             android.util.Log.e("SECURITY_DEBUG", "score=$sec")
 
-            // 🔧 TOLERANSI supaya tidak false positive
             if (sec < 30) {
                 performSilentKill()
                 return
@@ -110,16 +162,12 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-            override fun onActivityStarted(activity: Activity) {
-                activityCount++
-            }
+            override fun onActivityStarted(activity: Activity) { activityCount++ }
             override fun onActivityResumed(activity: Activity) {}
             override fun onActivityPaused(activity: Activity) {}
             override fun onActivityStopped(activity: Activity) {
                 activityCount--
-                if (activityCount <= 0) {
-                    clearAllCache()
-                }
+                if (activityCount <= 0) clearAllCache()
             }
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: Activity) {}
@@ -134,19 +182,11 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    @Keep
-    private fun getSecurityScore(): Int {
-        var score = 0
-        if (isSignatureValid()) score += 13
-        if (!isModifiedByTool()) score += 17
-        if (!isProxyOrVpnActive()) score += 19
-        return score
-    }
+    // ==================== EXISTING LOGIC (JANGAN DIHAPUS) ====================
 
     @Keep
     private fun isSignatureValid(): Boolean {
         if (ORIGINAL_SIGNATURE.isBlank()) return true
-
         return try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
@@ -166,11 +206,9 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 val md = MessageDigest.getInstance("SHA-256")
                 md.update(sig.toByteArray())
                 val digest = md.digest()
-
                 val currentSignature = digest.joinToString("") {
                     String.format("%02x", it)
                 }
-
                 ORIGINAL_SIGNATURE.equals(currentSignature, true)
             } == true
         } catch (_: Exception) {
@@ -235,50 +273,5 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return buildImageLoader(applicationContext)
-    }
-
-    companion object {
-        var exceptionHandler: ExceptionHandler? = null
-
-        tailrec fun Context.getActivity(): Activity? {
-            return when (this) {
-                is Activity -> this
-                is ContextWrapper -> baseContext.getActivity()
-                else -> null
-            }
-        }
-
-        private var _context: WeakReference<Context>? = null
-        var context
-            get() = _context?.get()
-            private set(value) {
-                _context = WeakReference(value)
-                setContext(WeakReference(value))
-            }
-
-        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? = context?.getKey(path, valueType)
-        fun <T : Any> setKeyClass(path: String, value: T) { context?.setKey(path, value) }
-        fun removeKeys(folder: String): Int? = context?.removeKeys(folder)
-        fun <T> setKey(path: String, value: T) { context?.setKey(path, value) }
-        fun <T> setKey(folder: String, path: String, value: T) { context?.setKey(folder, path, value) }
-        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? = context?.getKey(path, defVal)
-        inline fun <reified T : Any> getKey(path: String): T? = context?.getKey(path)
-        inline fun <reified T : Any> getKey(folder: String, path: String): T? = context?.getKey(folder, path)
-        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? = context?.getKey(folder, path, defVal)
-        fun getKeys(folder: String): List<String>? = context?.getKeys(folder)
-        fun removeKey(folder: String, path: String) { context?.removeKey(folder, path) }
-        fun removeKey(path: String) { context?.removeKey(path) }
-
-        fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
-            context?.openBrowser(url, fallbackWebView, fragment)
-        }
-
-        fun openBrowser(url: String, activity: FragmentActivity?) {
-            openBrowser(
-                url,
-                isLayout(TV or EMULATOR),
-                activity?.supportFragmentManager?.fragments?.lastOrNull()
-            )
-        }
     }
 }
