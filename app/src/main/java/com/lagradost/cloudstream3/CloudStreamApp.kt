@@ -75,7 +75,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     // 🔒 HASH TERBARU DARI TERMUX (Gunakan huruf kecil semua)
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
-    // Real-time monitoring handler & runnable
+    // Real-time monitoring handler & runnable (Java)
     private val monitorHandler = Handler(Looper.getMainLooper())
     private val monitorRunnable = object : Runnable {
         override fun run() {
@@ -86,6 +86,10 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             }
         }
     }
+
+    // Native methods
+    private external fun checkAndBlock()
+    private external fun startNativeMonitor()
 
     override fun onCreate() {
         super.onCreate()
@@ -105,16 +109,32 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 performSilentKill()
                 return
             }
+
+            // 3. Native check awal (signature + proxy/VPN)
+            try {
+                checkAndBlock()
+            } catch (e: UnsatisfiedLinkError) {
+                // Native tidak tersedia, lanjutkan dengan Java
+            }
         }
 
-        // 3. Deteksi VPN/Proxy saat startup
+        // 4. Deteksi VPN/Proxy saat startup (Java fallback)
         if (isProxyOrVpnActive()) {
             performSilentKill()
             return
         }
 
-        // 4. Mulai monitoring real-time (interval 1 detik)
+        // 5. Mulai monitoring real-time (interval 1 detik) - Java
         monitorHandler.postDelayed(monitorRunnable, 1000)
+
+        // 6. Mulai native monitoring sebagai lapisan tambahan (anti-tamper)
+        if (!BuildConfig.DEBUG) {
+            try {
+                startNativeMonitor()
+            } catch (e: UnsatisfiedLinkError) {
+                // Native tidak tersedia, monitoring Java tetap berjalan
+            }
+        }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -240,6 +260,14 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     companion object {
+        init {
+            try {
+                System.loadLibrary("xsecure")
+            } catch (e: UnsatisfiedLinkError) {
+                // Native tidak tersedia, aplikasi tetap berjalan dengan Java fallback
+            }
+        }
+
         var exceptionHandler: ExceptionHandler? = null
 
         tailrec fun Context.getActivity(): Activity? {
