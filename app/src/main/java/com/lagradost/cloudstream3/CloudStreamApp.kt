@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
-import android.util.Base64
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -71,22 +70,33 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // 🔒 HASH ASLI – HANYA APK DENGAN TANDA TANGAN INI YANG BISA BERJALAN
-    private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
+    // 🔒 HASH ASLI (HEX FORMAT) - Sesuai dengan gambar Apktool M Anda
+    private val ORIGINAL_SIGNATURE = "adbab954eaf86820b932b17436df2703ea1bddbf9caef0886d816041895e18dc"
 
     override fun onCreate() {
         super.onCreate()
 
-        // === LAYER 1: INTEGRITY CHECK (SIGNATURE) ===
-        if (!isSignatureValid()) {
-            performSilentKill()
-            return
-        }
+        // === SECURITY CHECKPOINT ===
+        
+        // Skip proteksi jika sedang dalam mode Debug Android Studio
+        if (!BuildConfig.DEBUG) {
+            // 1. Cek Integritas Tanda Tangan (Signature)
+            if (!isSignatureValid()) {
+                performSilentKill()
+                return
+            }
 
-        // === LAYER 2: NETWORK SECURITY (PROXY/VPN) ===
-        if (isProxyOrVpnActive()) {
-            performSilentKill()
-            return
+            // 2. Cek Residu Alat Modifikasi (MT Manager/NP Manager)
+            if (isModifiedByTool()) {
+                performSilentKill()
+                return
+            }
+
+            // 3. Cek Koneksi Tidak Aman (Proxy/VPN)
+            if (isProxyOrVpnActive()) {
+                performSilentKill()
+                return
+            }
         }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
@@ -116,10 +126,10 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     /**
-     * Memverifikasi apakah tanda tangan APK cocok dengan versi asli.
+     * Verifikasi Signature menggunakan format Hexadecimal agar cocok dengan Apktool M.
      */
     private fun isSignatureValid(): Boolean {
-        if (ORIGINAL_SIGNATURE.isEmpty()) return false // TIDAK ADA bypass lagi
+        if (ORIGINAL_SIGNATURE.isBlank()) return true
 
         try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -139,11 +149,33 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             signatures?.forEach { sig ->
                 val md = MessageDigest.getInstance("SHA-256")
                 md.update(sig.toByteArray())
-                val currentSignature = Base64.encodeToString(md.digest(), Base64.NO_WRAP)
-                if (ORIGINAL_SIGNATURE == currentSignature) return true
+                val digest = md.digest()
+                
+                // Konversi byte ke Hex String (Lowercase)
+                val currentSignature = digest.joinToString("") { 
+                    String.format("%02x", it) 
+                }
+
+                if (ORIGINAL_SIGNATURE.trim().equals(currentSignature, ignoreCase = true)) {
+                    return true
+                }
             }
         } catch (e: Exception) {
             return false
+        }
+        return false
+    }
+
+    /**
+     * Deteksi file yang disuntikkan alat modifikasi untuk bypass signature.
+     */
+    private fun isModifiedByTool(): Boolean {
+        val suspiciousFiles = listOf("assets/pms", "assets/mg.pms", "assets/mt.pms")
+        for (filePath in suspiciousFiles) {
+            try {
+                assets.open(filePath).use { it.close() }
+                return true 
+            } catch (_: Exception) {}
         }
         return false
     }
