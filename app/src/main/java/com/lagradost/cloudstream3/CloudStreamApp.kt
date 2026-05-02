@@ -10,6 +10,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.provider.Settings
 import androidx.fragment.app.Fragment
@@ -70,36 +72,49 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // 🔒 HASH SIGNATURE (Hex huruf kecil sesuai data Termux Anda)
+    // 🔒 HASH TERBARU DARI TERMUX (Gunakan huruf kecil semua)
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
+
+    // Real-time monitoring handler & runnable
+    private val monitorHandler = Handler(Looper.getMainLooper())
+    private val monitorRunnable = object : Runnable {
+        override fun run() {
+            if (isProxyOrVpnActive()) {
+                performSilentKill()
+            } else {
+                monitorHandler.postDelayed(this, 1000) // cek setiap 1 detik
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
 
-        // === SISTEM PROTEKSI KEAMANAN TERPADU ===
+        // === PROTEKSI KEAMANAN ===
         
+        // Cek Signature hanya pada versi RELEASE agar tidak blank saat sedang coding (Debug)
         if (!BuildConfig.DEBUG) {
-            // 1. Verifikasi Signature Ganda (Native + Kotlin)
+            // 1. Validasi Tanda Tangan
             if (!isSignatureValid()) {
                 performSilentKill()
                 return
             }
 
-            // 2. Deteksi Alat Modifikasi (Anti MT/NP Manager)
+            // 2. Deteksi Alat Modifikasi (MT Manager dkk)
             if (isModifiedByTool()) {
                 performSilentKill()
                 return
             }
-
-            // 3. Menjalankan Monitoring Native Real-time (Anti-Sniffing)
-            startNativeMonitor()
         }
 
-        // 4. Deteksi Proxy/VPN pada saat Startup
+        // 3. Deteksi VPN/Proxy saat startup
         if (isProxyOrVpnActive()) {
             performSilentKill()
             return
         }
+
+        // 4. Mulai monitoring real-time (interval 1 detik)
+        monitorHandler.postDelayed(monitorRunnable, 1000)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -150,6 +165,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 md.update(sig.toByteArray())
                 val digest = md.digest()
                 
+                // Konversi ke format Hex (tanpa titik dua) agar cocok dengan ORIGINAL_SIGNATURE
                 val currentSignature = digest.joinToString("") { 
                     String.format("%02x", it) 
                 }
@@ -165,7 +181,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     private fun isModifiedByTool(): Boolean {
-        // Mendeteksi keberadaan file pms yang diinjeksi oleh alat modifikasi (MT/NP Manager)
         val suspiciousFiles = listOf("assets/pms", "assets/mg.pms", "assets/mt.pms")
         for (filePath in suspiciousFiles) {
             try {
@@ -196,6 +211,8 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     private fun performSilentKill() {
+        // Hentikan monitoring agar tidak terjadi loop
+        monitorHandler.removeCallbacks(monitorRunnable)
         clearAllCache()
         Process.killProcess(Process.myPid())
         exitProcess(0)
@@ -223,11 +240,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     companion object {
-        init {
-            // Memuat library native untuk proteksi keamanan
-            System.loadLibrary("xsecure")
-        }
-
         var exceptionHandler: ExceptionHandler? = null
 
         tailrec fun Context.getActivity(): Activity? {
