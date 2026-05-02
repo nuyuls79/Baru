@@ -7,6 +7,9 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -64,23 +67,46 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
+    // Handler untuk pemantauan cepat (<1 detik)
+    private val monitorHandler = Handler(Looper.getMainLooper())
+    private val monitorRunnable = object : Runnable {
+        override fun run() {
+            if (isProxyOrVpnActiveNative() || isModifiedByToolNative()) {
+                performSilentKill()
+            } else {
+                monitorHandler.postDelayed(this, 1000)
+            }
+        }
+    }
+
     // Native methods
     private external fun nativeSecurityCheck()
-    private external fun startNativeMonitor()
+    private external fun isProxyOrVpnActiveNative(): Boolean
+    private external fun isModifiedByToolNative(): Boolean
+    private external fun isSignatureValidNative(): Boolean
+    private external fun startBackupMonitor()
 
     override fun onCreate() {
         super.onCreate()
 
-        // === SEMUA PROTEKSI KEAMANAN DI NATIVE ===
+        // === PEMERIKSAAN AWAL (SIGNATURE + MOD TOOLS + PROXY/VPN) ===
         if (!BuildConfig.DEBUG) {
             try {
                 nativeSecurityCheck()
-                startNativeMonitor()
             } catch (e: UnsatisfiedLinkError) {
-                // Native tidak tersedia
+                // Native tidak tersedia → aplikasi tetap bisa berjalan (fallback)
             }
         }
-        // ==========================================
+
+        // === PEMANTAUAN REAL-TIME (<1 detik via Java Handler) ===
+        monitorHandler.postDelayed(monitorRunnable, 1000)
+
+        // === PEMANTAU CADANGAN DI NATIVE (jika Java handler dihapus oleh penyerang) ===
+        if (!BuildConfig.DEBUG) {
+            try {
+                startBackupMonitor()
+            } catch (e: UnsatisfiedLinkError) {}
+        }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -106,6 +132,13 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             exceptionHandler = it
             Thread.setDefaultUncaughtExceptionHandler(it)
         }
+    }
+
+    private fun performSilentKill() {
+        monitorHandler.removeCallbacks(monitorRunnable)
+        clearAllCache()
+        Process.killProcess(Process.myPid())
+        exitProcess(0)
     }
 
     private fun clearAllCache() {
