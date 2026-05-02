@@ -117,9 +117,10 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     /**
      * Memverifikasi apakah tanda tangan APK cocok dengan versi asli.
+     * TIDAK BOLEH memanggil UI (Toast, AlertDialog) atau logging berat di sini.
      */
     private fun isSignatureValid(): Boolean {
-        if (ORIGINAL_SIGNATURE.isEmpty()) return false // TIDAK ADA bypass lagi
+        if (ORIGINAL_SIGNATURE.isEmpty()) return false
 
         try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
