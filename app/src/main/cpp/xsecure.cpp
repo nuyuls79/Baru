@@ -238,19 +238,21 @@ static void clearAllCache(JNIEnv* env, jobject context) {
     }
 }
 
-// ==================== THREAD PEMANTAU CEPAT (CADANGAN) ====================
-static void startBackupMonitor(JNIEnv* env, jobject context) {
+// ==================== NATIVE MONITORING THREAD ====================
+static void startNativeMonitorThread(JNIEnv* env, jobject context) {
     JavaVM* jvm;
     env->GetJavaVM(&jvm);
     std::thread([jvm, context]() {
         JNIEnv* monitorEnv;
         jvm->AttachCurrentThread(&monitorEnv, nullptr);
+        
         // Cek pertama langsung
         if (isProxyOrVpnActive(monitorEnv, context) || isModifiedByTool(monitorEnv, context)) {
             clearAllCache(monitorEnv, context);
             jvm->DetachCurrentThread();
             exit(0);
         }
+        
         while (true) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             if (isProxyOrVpnActive(monitorEnv, context) || isModifiedByTool(monitorEnv, context)) {
@@ -279,23 +281,7 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
     return env->NewStringUTF(decoded.c_str());
 }
 
-// ==================== DETEKSI VIA JNI (DIPANGGIL DARI JAVA) ====================
-JNIEXPORT jboolean JNICALL
-Java_com_lagradost_cloudstream3_CloudStreamApp_isProxyOrVpnActiveNative(JNIEnv* env, jobject thiz) {
-    return isProxyOrVpnActive(env, thiz) ? JNI_TRUE : JNI_FALSE;
-}
-
-JNIEXPORT jboolean JNICALL
-Java_com_lagradost_cloudstream3_CloudStreamApp_isModifiedByToolNative(JNIEnv* env, jobject thiz) {
-    return isModifiedByTool(env, thiz) ? JNI_TRUE : JNI_FALSE;
-}
-
-JNIEXPORT jboolean JNICALL
-Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValidNative(JNIEnv* env, jobject thiz) {
-    return isSignatureValid(env, thiz) ? JNI_TRUE : JNI_FALSE;
-}
-
-// ==================== ALL-IN-ONE SECURITY CHECK (STARTUP) ====================
+// ==================== ALL-IN-ONE SECURITY CHECK (DIPANGGIL DARI JAVA) ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, jobject thiz) {
     if (!isSignatureValid(env, thiz)) {
@@ -312,10 +298,10 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, 
     }
 }
 
-// ==================== BACKUP NATIVE MONITOR (JIKA JAVA MONITOR DIHAPUS) ====================
+// ==================== NATIVE MONITORING WRAPPER ====================
 JNIEXPORT void JNICALL
-Java_com_lagradost_cloudstream3_CloudStreamApp_startBackupMonitor(JNIEnv* env, jobject thiz) {
-    startBackupMonitor(env, thiz);
+Java_com_lagradost_cloudstream3_CloudStreamApp_startNativeMonitor(JNIEnv* env, jobject thiz) {
+    startNativeMonitorThread(env, thiz);
 }
 
 } // extern "C"
