@@ -73,10 +73,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     // 🔒 HASH SIGNATURE (Hex huruf kecil sesuai data Termux Anda)
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
-    // --- DEKLARASI FUNGSI NATIVE ---
-    external fun isSignatureValidNative(context: Context): Boolean
-    external fun startNativeMonitor()
-
     override fun onCreate() {
         super.onCreate()
 
