@@ -71,21 +71,19 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // Masukkan hasil SHA-256 asli Anda di sini
-    private val ORIGINAL_SIGNATURE = "ISI_DENGAN_HASH_SHA256_ANDA"
+    // 🔒 HASH ASLI – HANYA APK DENGAN TANDA TANGAN INI YANG BISA BERJALAN
+    private val ORIGINAL_SIGNATURE = "B115983AB9DFFA173EE350FEE7A6EEF515CBB16D0D06C4054579CDC6487E68FC"
 
     override fun onCreate() {
         super.onCreate()
 
         // === LAYER 1: INTEGRITY CHECK (SIGNATURE) ===
-        // Mencegah aplikasi dijalankan jika sudah di-mod/re-sign
         if (!isSignatureValid()) {
             performSilentKill()
             return
         }
 
         // === LAYER 2: NETWORK SECURITY (PROXY/VPN) ===
-        // Mencegah penggunaan aplikasi capture data
         if (isProxyOrVpnActive()) {
             performSilentKill()
             return
@@ -121,8 +119,8 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
      * Memverifikasi apakah tanda tangan APK cocok dengan versi asli.
      */
     private fun isSignatureValid(): Boolean {
-        if (ORIGINAL_SIGNATURE.isEmpty() || ORIGINAL_SIGNATURE == "ISI_DENGAN_HASH_SHA256_ANDA") return true // Bypass jika belum diset
-        
+        if (ORIGINAL_SIGNATURE.isEmpty()) return false // TIDAK ADA bypass lagi
+
         try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
@@ -151,18 +149,15 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     private fun isProxyOrVpnActive(): Boolean {
-        // Cek System Properties (untuk Proxy)
         val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
         val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
         if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
 
-        // Cek Global Settings
         try {
             val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
             if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
         } catch (e: Exception) {}
 
-        // Cek Connectivity Manager (untuk VPN)
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
@@ -172,9 +167,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         return false
     }
 
-    /**
-     * Mematikan aplikasi secara bersih dan menghapus cache agar data capture tidak tersisa.
-     */
     private fun performSilentKill() {
         clearAllCache()
         Process.killProcess(Process.myPid())
@@ -221,53 +213,18 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 setContext(WeakReference(value))
             }
 
-        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? {
-            return context?.getKey(path, valueType)
-        }
-
-        fun <T : Any> setKeyClass(path: String, value: T) {
-            context?.setKey(path, value)
-        }
-
-        fun removeKeys(folder: String): Int? {
-            return context?.removeKeys(folder)
-        }
-
-        fun <T> setKey(path: String, value: T) {
-            context?.setKey(path, value)
-        }
-
-        fun <T> setKey(folder: String, path: String, value: T) {
-            context?.setKey(folder, path, value)
-        }
-
-        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? {
-            return context?.getKey(path, defVal)
-        }
-
-        inline fun <reified T : Any> getKey(path: String): T? {
-            return context?.getKey(path)
-        }
-
-        inline fun <reified T : Any> getKey(folder: String, path: String): T? {
-            return context?.getKey(folder, path)
-        }
-
-        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? {
-            return context?.getKey(folder, path, defVal)
-        }
-
-        fun getKeys(folder: String): List<String>? {
-            return context?.getKeys(folder)
-        }
-
-        fun removeKey(folder: String, path: String) {
-            context?.removeKey(folder, path)
-        }
-
-        fun removeKey(path: String) {
-            context?.removeKey(path)
-        }
+        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? = context?.getKey(path, valueType)
+        fun <T : Any> setKeyClass(path: String, value: T) { context?.setKey(path, value) }
+        fun removeKeys(folder: String): Int? = context?.removeKeys(folder)
+        fun <T> setKey(path: String, value: T) { context?.setKey(path, value) }
+        fun <T> setKey(folder: String, path: String, value: T) { context?.setKey(folder, path, value) }
+        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? = context?.getKey(path, defVal)
+        inline fun <reified T : Any> getKey(path: String): T? = context?.getKey(path)
+        inline fun <reified T : Any> getKey(folder: String, path: String): T? = context?.getKey(folder, path)
+        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? = context?.getKey(folder, path, defVal)
+        fun getKeys(folder: String): List<String>? = context?.getKeys(folder)
+        fun removeKey(folder: String, path: String) { context?.removeKey(folder, path) }
+        fun removeKey(path: String) { context?.removeKey(path) }
 
         fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
             context?.openBrowser(url, fallbackWebView, fragment)
