@@ -72,7 +72,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     private var activityCount = 0
 
     // 🔒 HASH ASLI – HANYA APK DENGAN TANDA TANGAN INI YANG BISA BERJALAN
-    private val ORIGINAL_SIGNATURE = "B115983AB9DFFA173EE350FEE7A6EEF515CBB16D0D06C4054579CDC6487E68FC"
+    private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
     override fun onCreate() {
         super.onCreate()
@@ -117,10 +117,9 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     /**
      * Memverifikasi apakah tanda tangan APK cocok dengan versi asli.
-     * TIDAK BOLEH memanggil UI (Toast, AlertDialog) atau logging berat di sini.
      */
     private fun isSignatureValid(): Boolean {
-        if (ORIGINAL_SIGNATURE.isEmpty()) return false
+        if (ORIGINAL_SIGNATURE.isEmpty()) return false // TIDAK ADA bypass lagi
 
         try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
