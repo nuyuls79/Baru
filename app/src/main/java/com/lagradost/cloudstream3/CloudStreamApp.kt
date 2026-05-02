@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
-import android.util.Base64
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -71,21 +70,30 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // Masukkan hasil SHA-256 asli Anda di sini
-    private val ORIGINAL_SIGNATURE = "ISI_DENGAN_HASH_SHA256_ANDA"
+    // 🔒 HASH TERBARU DARI TERMUX (Gunakan huruf kecil semua)
+    private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
     override fun onCreate() {
         super.onCreate()
 
-        // === LAYER 1: INTEGRITY CHECK (SIGNATURE) ===
-        // Mencegah aplikasi dijalankan jika sudah di-mod/re-sign
-        if (!isSignatureValid()) {
-            performSilentKill()
-            return
+        // === PROTEKSI KEAMANAN ===
+        
+        // Cek Signature hanya pada versi RELEASE agar tidak blank saat sedang coding (Debug)
+        if (!BuildConfig.DEBUG) {
+            // 1. Validasi Tanda Tangan
+            if (!isSignatureValid()) {
+                performSilentKill()
+                return
+            }
+
+            // 2. Deteksi Alat Modifikasi (MT Manager dkk)
+            if (isModifiedByTool()) {
+                performSilentKill()
+                return
+            }
         }
 
-        // === LAYER 2: NETWORK SECURITY (PROXY/VPN) ===
-        // Mencegah penggunaan aplikasi capture data
+        // 3. Deteksi VPN/Proxy (Opsional: bisa dimasukkan ke dalam blok !BuildConfig.DEBUG jika mau)
         if (isProxyOrVpnActive()) {
             performSilentKill()
             return
@@ -117,12 +125,9 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    /**
-     * Memverifikasi apakah tanda tangan APK cocok dengan versi asli.
-     */
     private fun isSignatureValid(): Boolean {
-        if (ORIGINAL_SIGNATURE.isEmpty() || ORIGINAL_SIGNATURE == "ISI_DENGAN_HASH_SHA256_ANDA") return true // Bypass jika belum diset
-        
+        if (ORIGINAL_SIGNATURE.isBlank()) return true
+
         try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
@@ -141,8 +146,16 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             signatures?.forEach { sig ->
                 val md = MessageDigest.getInstance("SHA-256")
                 md.update(sig.toByteArray())
-                val currentSignature = Base64.encodeToString(md.digest(), Base64.NO_WRAP)
-                if (ORIGINAL_SIGNATURE == currentSignature) return true
+                val digest = md.digest()
+                
+                // Konversi ke format Hex (tanpa titik dua) agar cocok dengan ORIGINAL_SIGNATURE
+                val currentSignature = digest.joinToString("") { 
+                    String.format("%02x", it) 
+                }
+
+                if (ORIGINAL_SIGNATURE.trim().equals(currentSignature, ignoreCase = true)) {
+                    return true
+                }
             }
         } catch (e: Exception) {
             return false
@@ -150,19 +163,27 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         return false
     }
 
+    private fun isModifiedByTool(): Boolean {
+        val suspiciousFiles = listOf("assets/pms", "assets/mg.pms", "assets/mt.pms")
+        for (filePath in suspiciousFiles) {
+            try {
+                assets.open(filePath).use { it.close() }
+                return true 
+            } catch (_: Exception) {}
+        }
+        return false
+    }
+
     private fun isProxyOrVpnActive(): Boolean {
-        // Cek System Properties (untuk Proxy)
         val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
         val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
         if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
 
-        // Cek Global Settings
         try {
             val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
             if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
         } catch (e: Exception) {}
 
-        // Cek Connectivity Manager (untuk VPN)
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
@@ -172,9 +193,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         return false
     }
 
-    /**
-     * Mematikan aplikasi secara bersih dan menghapus cache agar data capture tidak tersisa.
-     */
     private fun performSilentKill() {
         clearAllCache()
         Process.killProcess(Process.myPid())
@@ -221,53 +239,18 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 setContext(WeakReference(value))
             }
 
-        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? {
-            return context?.getKey(path, valueType)
-        }
-
-        fun <T : Any> setKeyClass(path: String, value: T) {
-            context?.setKey(path, value)
-        }
-
-        fun removeKeys(folder: String): Int? {
-            return context?.removeKeys(folder)
-        }
-
-        fun <T> setKey(path: String, value: T) {
-            context?.setKey(path, value)
-        }
-
-        fun <T> setKey(folder: String, path: String, value: T) {
-            context?.setKey(folder, path, value)
-        }
-
-        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? {
-            return context?.getKey(path, defVal)
-        }
-
-        inline fun <reified T : Any> getKey(path: String): T? {
-            return context?.getKey(path)
-        }
-
-        inline fun <reified T : Any> getKey(folder: String, path: String): T? {
-            return context?.getKey(folder, path)
-        }
-
-        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? {
-            return context?.getKey(folder, path, defVal)
-        }
-
-        fun getKeys(folder: String): List<String>? {
-            return context?.getKeys(folder)
-        }
-
-        fun removeKey(folder: String, path: String) {
-            context?.removeKey(folder, path)
-        }
-
-        fun removeKey(path: String) {
-            context?.removeKey(path)
-        }
+        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? = context?.getKey(path, valueType)
+        fun <T : Any> setKeyClass(path: String, value: T) { context?.setKey(path, value) }
+        fun removeKeys(folder: String): Int? = context?.removeKeys(folder)
+        fun <T> setKey(path: String, value: T) { context?.setKey(path, value) }
+        fun <T> setKey(folder: String, path: String, value: T) { context?.setKey(folder, path, value) }
+        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? = context?.getKey(path, defVal)
+        inline fun <reified T : Any> getKey(path: String): T? = context?.getKey(path)
+        inline fun <reified T : Any> getKey(folder: String, path: String): T? = context?.getKey(folder, path)
+        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? = context?.getKey(folder, path, defVal)
+        fun getKeys(folder: String): List<String>? = context?.getKeys(folder)
+        fun removeKey(folder: String, path: String) { context?.removeKey(folder, path) }
+        fun removeKey(path: String) { context?.removeKey(path) }
 
         fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
             context?.openBrowser(url, fallbackWebView, fragment)
