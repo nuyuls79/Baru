@@ -84,7 +84,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         
         if (!BuildConfig.DEBUG) {
             // 1. Verifikasi Signature Ganda (Native + Kotlin)
-            if (!isSignatureValidNative(this) || !isSignatureValid()) {
+            if (!isSignatureValid()) {
                 performSilentKill()
                 return
             }
