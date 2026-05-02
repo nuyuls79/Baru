@@ -72,10 +72,9 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // 🔒 HASH TERBARU DARI TERMUX (Gunakan huruf kecil semua)
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
-    // Real-time monitoring handler & runnable
+    // Fallback Java monitoring
     private val monitorHandler = Handler(Looper.getMainLooper())
     private val monitorRunnable = object : Runnable {
         override fun run() {
@@ -87,33 +86,37 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    // Native methods
+    private external fun nativeSecurityCheck()
+    private external fun startNativeMonitor()
+
     override fun onCreate() {
         super.onCreate()
 
-        // === PROTEKSI KEAMANAN ===
-        
+        // === NATIVE SECURITY CHECK (DENGAN FALLBACK) ===
         if (!BuildConfig.DEBUG) {
-            // 1. Validasi Tanda Tangan
-            if (!isSignatureValid()) {
-                performSilentKill()
-                return
-            }
-
-            // 2. Deteksi Alat Modifikasi (MT Manager dkk)
-            if (isModifiedByTool()) {
-                performSilentKill()
-                return
+            try {
+                nativeSecurityCheck()
+            } catch (e: UnsatisfiedLinkError) {
+                // Fallback ke Java
+                if (!isSignatureValid() || isModifiedByTool() || isProxyOrVpnActive()) {
+                    performSilentKill()
+                    return
+                }
             }
         }
 
-        // 3. Deteksi VPN/Proxy saat startup
-        if (isProxyOrVpnActive()) {
-            performSilentKill()
-            return
+        // === NATIVE MONITORING (DENGAN FALLBACK) ===
+        if (!BuildConfig.DEBUG) {
+            try {
+                startNativeMonitor()
+            } catch (e: UnsatisfiedLinkError) {
+                // Fallback: gunakan Java monitoring
+                monitorHandler.postDelayed(monitorRunnable, 1000)
+            }
+        } else {
+            monitorHandler.postDelayed(monitorRunnable, 1000)
         }
-
-        // 4. Mulai monitoring real-time (Java Handler)
-        monitorHandler.postDelayed(monitorRunnable, 1000)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -141,9 +144,9 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    // ==================== FALLBACK JAVA METHODS ====================
     private fun isSignatureValid(): Boolean {
         if (ORIGINAL_SIGNATURE.isBlank()) return true
-
         try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
@@ -151,30 +154,20 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 @Suppress("DEPRECATION")
                 packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
             }
-
             val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageInfo.signingInfo?.apkContentsSigners
             } else {
                 @Suppress("DEPRECATION")
                 packageInfo.signatures
             }
-
             signatures?.forEach { sig ->
                 val md = MessageDigest.getInstance("SHA-256")
                 md.update(sig.toByteArray())
                 val digest = md.digest()
-                
-                val currentSignature = digest.joinToString("") { 
-                    String.format("%02x", it) 
-                }
-
-                if (ORIGINAL_SIGNATURE.trim().equals(currentSignature, ignoreCase = true)) {
-                    return true
-                }
+                val currentSignature = digest.joinToString("") { String.format("%02x", it) }
+                if (ORIGINAL_SIGNATURE.trim().equals(currentSignature, ignoreCase = true)) return true
             }
-        } catch (e: Exception) {
-            return false
-        }
+        } catch (e: Exception) { return false }
         return false
     }
 
@@ -183,7 +176,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         for (filePath in suspiciousFiles) {
             try {
                 assets.open(filePath).use { it.close() }
-                return true 
+                return true
             } catch (_: Exception) {}
         }
         return false
@@ -193,12 +186,10 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
         val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
         if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
-
         try {
             val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
             if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
         } catch (e: Exception) {}
-
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val activeNetwork = connectivityManager.activeNetwork ?: return false
@@ -237,6 +228,12 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     companion object {
+        init {
+            try {
+                System.loadLibrary("xsecure")
+            } catch (e: UnsatisfiedLinkError) {}
+        }
+
         var exceptionHandler: ExceptionHandler? = null
 
         tailrec fun Context.getActivity(): Activity? {
