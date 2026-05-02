@@ -36,12 +36,6 @@ import java.io.FileNotFoundException
 import java.io.PrintStream
 import java.lang.ref.WeakReference
 import java.security.MessageDigest
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
-import javax.net.ssl.HttpsURLConnection
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 import kotlin.system.exitProcess
 
 class ExceptionHandler(
@@ -93,34 +87,8 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
-    // Native method declarations
-    private external fun startBackupMonitor()
-
     override fun onCreate() {
         super.onCreate()
-
-        // === SSL CERTIFICATE PINNING (BLOKIR HTTPCANARY) ===
-        try {
-            val trustManager = object : X509TrustManager {
-                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
-                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
-                    chain?.firstOrNull()?.let { cert ->
-                        val publicKey = cert.publicKey.encoded
-                        val sha256 = MessageDigest.getInstance("SHA-256").digest(publicKey)
-                        val hex = sha256.joinToString("") { "%02x".format(it) }
-                        if (hex == ORIGINAL_SIGNATURE) return
-                    }
-                    throw javax.net.ssl.SSLHandshakeException("Certificate pinning failed!")
-                }
-            }
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, arrayOf<TrustManager>(trustManager), SecureRandom())
-            HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.socketFactory)
-        } catch (e: Exception) {
-            // Abaikan jika terjadi error
-        }
-        // ==================================================
 
         // === PROTEKSI KEAMANAN ===
         
@@ -144,17 +112,8 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
             return
         }
 
-        // 4. Mulai monitoring real-time (Java)
+        // 4. Mulai monitoring real-time (Java Handler)
         monitorHandler.postDelayed(monitorRunnable, 1000)
-
-        // 5. Native backup monitor (tidak bisa di-smali)
-        if (!BuildConfig.DEBUG) {
-            try {
-                startBackupMonitor()
-            } catch (e: UnsatisfiedLinkError) {
-                // Native tidak tersedia, Java monitor tetap berjalan
-            }
-        }
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
@@ -278,12 +237,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     companion object {
-        init {
-            try {
-                System.loadLibrary("xsecure")
-            } catch (e: UnsatisfiedLinkError) {}
-        }
-
         var exceptionHandler: ExceptionHandler? = null
 
         tailrec fun Context.getActivity(): Activity? {
