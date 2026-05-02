@@ -70,30 +70,36 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // 🔒 HASH TERBARU DARI TERMUX (Gunakan huruf kecil semua)
+    // 🔒 HASH SIGNATURE (Hex huruf kecil sesuai data Termux Anda)
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
+
+    // --- DEKLARASI FUNGSI NATIVE ---
+    external fun isSignatureValidNative(context: Context): Boolean
+    external fun startNativeMonitor()
 
     override fun onCreate() {
         super.onCreate()
 
-        // === PROTEKSI KEAMANAN ===
+        // === SISTEM PROTEKSI KEAMANAN TERPADU ===
         
-        // Cek Signature hanya pada versi RELEASE agar tidak blank saat sedang coding (Debug)
         if (!BuildConfig.DEBUG) {
-            // 1. Validasi Tanda Tangan
-            if (!isSignatureValid()) {
+            // 1. Verifikasi Signature Ganda (Native + Kotlin)
+            if (!isSignatureValidNative(this) || !isSignatureValid()) {
                 performSilentKill()
                 return
             }
 
-            // 2. Deteksi Alat Modifikasi (MT Manager dkk)
+            // 2. Deteksi Alat Modifikasi (Anti MT/NP Manager)
             if (isModifiedByTool()) {
                 performSilentKill()
                 return
             }
+
+            // 3. Menjalankan Monitoring Native Real-time (Anti-Sniffing)
+            startNativeMonitor()
         }
 
-        // 3. Deteksi VPN/Proxy (Opsional: bisa dimasukkan ke dalam blok !BuildConfig.DEBUG jika mau)
+        // 4. Deteksi Proxy/VPN pada saat Startup
         if (isProxyOrVpnActive()) {
             performSilentKill()
             return
@@ -148,7 +154,6 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 md.update(sig.toByteArray())
                 val digest = md.digest()
                 
-                // Konversi ke format Hex (tanpa titik dua) agar cocok dengan ORIGINAL_SIGNATURE
                 val currentSignature = digest.joinToString("") { 
                     String.format("%02x", it) 
                 }
@@ -164,6 +169,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     private fun isModifiedByTool(): Boolean {
+        // Mendeteksi keberadaan file pms yang diinjeksi oleh alat modifikasi (MT/NP Manager)
         val suspiciousFiles = listOf("assets/pms", "assets/mg.pms", "assets/mt.pms")
         for (filePath in suspiciousFiles) {
             try {
@@ -221,6 +227,11 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     }
 
     companion object {
+        init {
+            // Memuat library native untuk proteksi keamanan
+            System.loadLibrary("xsecure")
+        }
+
         var exceptionHandler: ExceptionHandler? = null
 
         tailrec fun Context.getActivity(): Activity? {
