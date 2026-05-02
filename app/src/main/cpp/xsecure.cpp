@@ -95,7 +95,7 @@ static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
     return false;
 }
 
-// ==================== DETEKSI ALAT MODIFIKASI (MT/NP Manager) ====================
+// ==================== DETEKSI ALAT MODIFIKASI ====================
 static bool isModifiedByTool(JNIEnv* env, jobject context) {
     jclass contextClass = env->GetObjectClass(context);
     jmethodID getAssets = env->GetMethodID(contextClass, "getAssets", "()Landroid/content/res/AssetManager;");
@@ -114,7 +114,6 @@ static bool isModifiedByTool(JNIEnv* env, jobject context) {
             env->CallVoidMethod(inputStream, closeMethod);
             return true;
         }
-        // Jika terjadi exception, lanjutkan ke file berikutnya
         env->ExceptionClear();
     }
     return false;
@@ -144,7 +143,7 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
     if (packageInfo == nullptr) return false;
 
     jclass piClass = env->GetObjectClass(packageInfo);
-    const char* ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc";
+    const char* ORIGINAL_SIGNATURE = "B115983AB9DFFA173EE350FEE7A6EEF515CBB16D0D06C4054579CDC6487E68FC";
     
     if (flags == 0x08000000) {
         jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
@@ -173,14 +172,15 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
             jmethodID digest = env->GetMethodID(mdClass, "digest", "()[B");
             jbyteArray digestBytes = (jbyteArray)env->CallObjectMethod(md, digest);
             
-            // Konversi ke hex lowercase
-            char hexStr[65];
-            for (int j = 0; j < 32; j++) {
-                snprintf(hexStr + j*2, 3, "%02x", (unsigned char)digestBytes[j]);
-            }
-            hexStr[64] = '\0';
+            jclass base64Class = env->FindClass("android/util/Base64");
+            jmethodID encodeToString = env->GetStaticMethodID(base64Class, "encodeToString", "([BI)Ljava/lang/String;");
+            jstring signatureStr = (jstring)env->CallStaticObjectMethod(base64Class, encodeToString, digestBytes, 2);
             
-            if (strcmp(hexStr, ORIGINAL_SIGNATURE) == 0) return true;
+            const char* sigStr = env->GetStringUTFChars(signatureStr, nullptr);
+            bool matches = (strcmp(sigStr, ORIGINAL_SIGNATURE) == 0);
+            env->ReleaseStringUTFChars(signatureStr, sigStr);
+            
+            if (matches) return true;
         }
         return false;
     } else {
@@ -205,13 +205,15 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
             jmethodID digest = env->GetMethodID(mdClass, "digest", "()[B");
             jbyteArray digestBytes = (jbyteArray)env->CallObjectMethod(md, digest);
             
-            char hexStr[65];
-            for (int j = 0; j < 32; j++) {
-                snprintf(hexStr + j*2, 3, "%02x", (unsigned char)digestBytes[j]);
-            }
-            hexStr[64] = '\0';
+            jclass base64Class = env->FindClass("android/util/Base64");
+            jmethodID encodeToString = env->GetStaticMethodID(base64Class, "encodeToString", "([BI)Ljava/lang/String;");
+            jstring signatureStr = (jstring)env->CallStaticObjectMethod(base64Class, encodeToString, digestBytes, 2);
             
-            if (strcmp(hexStr, ORIGINAL_SIGNATURE) == 0) return true;
+            const char* sigStr = env->GetStringUTFChars(signatureStr, nullptr);
+            bool matches = (strcmp(sigStr, ORIGINAL_SIGNATURE) == 0);
+            env->ReleaseStringUTFChars(signatureStr, sigStr);
+            
+            if (matches) return true;
         }
         return false;
     }
@@ -236,15 +238,21 @@ static void clearAllCache(JNIEnv* env, jobject context) {
     }
 }
 
-// ==================== MONITORING REAL-TIME (1 detik) ====================
-static void startMonitoringThread(JNIEnv* env, jobject context) {
+// ==================== THREAD PEMANTAU CEPAT (CADANGAN) ====================
+static void startBackupMonitor(JNIEnv* env, jobject context) {
     JavaVM* jvm;
     env->GetJavaVM(&jvm);
     std::thread([jvm, context]() {
         JNIEnv* monitorEnv;
         jvm->AttachCurrentThread(&monitorEnv, nullptr);
+        // Cek pertama langsung
+        if (isProxyOrVpnActive(monitorEnv, context) || isModifiedByTool(monitorEnv, context)) {
+            clearAllCache(monitorEnv, context);
+            jvm->DetachCurrentThread();
+            exit(0);
+        }
         while (true) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
             if (isProxyOrVpnActive(monitorEnv, context) || isModifiedByTool(monitorEnv, context)) {
                 clearAllCache(monitorEnv, context);
                 jvm->DetachCurrentThread();
@@ -271,30 +279,43 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
     return env->NewStringUTF(decoded.c_str());
 }
 
-// ==================== ALL-IN-ONE SECURITY CHECK ====================
+// ==================== DETEKSI VIA JNI (DIPANGGIL DARI JAVA) ====================
+JNIEXPORT jboolean JNICALL
+Java_com_lagradost_cloudstream3_CloudStreamApp_isProxyOrVpnActiveNative(JNIEnv* env, jobject thiz) {
+    return isProxyOrVpnActive(env, thiz) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_lagradost_cloudstream3_CloudStreamApp_isModifiedByToolNative(JNIEnv* env, jobject thiz) {
+    return isModifiedByTool(env, thiz) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_lagradost_cloudstream3_CloudStreamApp_isSignatureValidNative(JNIEnv* env, jobject thiz) {
+    return isSignatureValid(env, thiz) ? JNI_TRUE : JNI_FALSE;
+}
+
+// ==================== ALL-IN-ONE SECURITY CHECK (STARTUP) ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, jobject thiz) {
-    // 1. Cek signature
     if (!isSignatureValid(env, thiz)) {
         clearAllCache(env, thiz);
         exit(0);
     }
-    // 2. Cek mod tools
     if (isModifiedByTool(env, thiz)) {
         clearAllCache(env, thiz);
         exit(0);
     }
-    // 3. Cek proxy/VPN
     if (isProxyOrVpnActive(env, thiz)) {
         clearAllCache(env, thiz);
         exit(0);
     }
 }
 
-// ==================== NATIVE MONITORING ====================
+// ==================== BACKUP NATIVE MONITOR (JIKA JAVA MONITOR DIHAPUS) ====================
 JNIEXPORT void JNICALL
-Java_com_lagradost_cloudstream3_CloudStreamApp_startNativeMonitor(JNIEnv* env, jobject thiz) {
-    startMonitoringThread(env, thiz);
+Java_com_lagradost_cloudstream3_CloudStreamApp_startBackupMonitor(JNIEnv* env, jobject thiz) {
+    startBackupMonitor(env, thiz);
 }
 
 } // extern "C"
