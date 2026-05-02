@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.provider.Settings
+import androidx.annotation.Keep
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
@@ -72,11 +73,10 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
     private var activityCount = 0
 
-    // 🔒 HASH TERBARU DARI TERMUX (Gunakan huruf kecil semua)
     private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
-    // Real-time monitoring handler & runnable
     private val monitorHandler = Handler(Looper.getMainLooper())
+
     private val monitorRunnable = object : Runnable {
         override fun run() {
             if (isProxyOrVpnActive()) {
@@ -90,29 +90,22 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
 
-        // === PROTEKSI KEAMANAN ===
-        
         if (!BuildConfig.DEBUG) {
-            // 1. Validasi Tanda Tangan
-            if (!isSignatureValid()) {
-                performSilentKill()
-                return
-            }
+            val sec = getSecurityScore()
+            android.util.Log.e("SECURITY_DEBUG", "score=$sec")
 
-            // 2. Deteksi Alat Modifikasi (MT Manager dkk)
-            if (isModifiedByTool()) {
+            // 🔧 TOLERANSI supaya tidak false positive
+            if (sec < 30) {
                 performSilentKill()
                 return
             }
         }
 
-        // 3. Deteksi VPN/Proxy saat startup
         if (isProxyOrVpnActive()) {
             performSilentKill()
             return
         }
 
-        // 4. Mulai monitoring real-time (Java Handler)
         monitorHandler.postDelayed(monitorRunnable, 1000)
 
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
@@ -141,10 +134,20 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    @Keep
+    private fun getSecurityScore(): Int {
+        var score = 0
+        if (isSignatureValid()) score += 13
+        if (!isModifiedByTool()) score += 17
+        if (!isProxyOrVpnActive()) score += 19
+        return score
+    }
+
+    @Keep
     private fun isSignatureValid(): Boolean {
         if (ORIGINAL_SIGNATURE.isBlank()) return true
 
-        try {
+        return try {
             val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
             } else {
@@ -159,45 +162,43 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 packageInfo.signatures
             }
 
-            signatures?.forEach { sig ->
+            signatures?.any { sig ->
                 val md = MessageDigest.getInstance("SHA-256")
                 md.update(sig.toByteArray())
                 val digest = md.digest()
-                
-                val currentSignature = digest.joinToString("") { 
-                    String.format("%02x", it) 
+
+                val currentSignature = digest.joinToString("") {
+                    String.format("%02x", it)
                 }
 
-                if (ORIGINAL_SIGNATURE.trim().equals(currentSignature, ignoreCase = true)) {
-                    return true
-                }
-            }
-        } catch (e: Exception) {
-            return false
+                ORIGINAL_SIGNATURE.equals(currentSignature, true)
+            } == true
+        } catch (_: Exception) {
+            false
         }
-        return false
     }
 
+    @Keep
     private fun isModifiedByTool(): Boolean {
-        val suspiciousFiles = listOf("assets/pms", "assets/mg.pms", "assets/mt.pms")
-        for (filePath in suspiciousFiles) {
-            try {
-                assets.open(filePath).use { it.close() }
-                return true 
-            } catch (_: Exception) {}
+        return try {
+            assets.open("assets/pms").close()
+            true
+        } catch (_: Exception) {
+            false
         }
-        return false
     }
 
+    @Keep
     private fun isProxyOrVpnActive(): Boolean {
         val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
         val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
+
         if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
 
         try {
             val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
             if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
 
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -208,6 +209,7 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         return false
     }
 
+    @Keep
     private fun performSilentKill() {
         monitorHandler.removeCallbacks(monitorRunnable)
         clearAllCache()
@@ -215,15 +217,14 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
         exitProcess(0)
     }
 
+    @Keep
     private fun clearAllCache() {
         try {
             cacheDir?.deleteRecursively()
             externalCacheDir?.deleteRecursively()
             val tempDir = File(filesDir, "temp")
             if (tempDir.exists()) tempDir.deleteRecursively()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (_: Exception) {}
     }
 
     override fun attachBaseContext(base: Context?) {
