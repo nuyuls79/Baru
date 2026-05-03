@@ -51,7 +51,27 @@ std::string base64_decode(const std::string &encoded_string) {
     return ret;
 }
 
-// ==================== SIGNATURE FULL NATIVE ====================
+// ==================== OBFUSCATED SIGNATURE ====================
+static std::string getOriginalSignature() {
+    const unsigned char data[] = {
+        0x38^0x5A,0x6B^0x5A,0x6B^0x5A,0x6F^0x5A,0x63^0x5A,0x62^0x5A,0x63^0x5A,0x3B^0x5A,
+        0x38^0x5A,0x63^0x5A,0x3E^0x5A,0x3C^0x5A,0x3C^0x5A,0x3B^0x5A,0x3F^0x5A,0x3F^0x5A,
+        0x68^0x5A,0x6F^0x5A,0x6F^0x5A,0x69^0x5A,0x6A^0x5A,0x3C^0x5A,0x3F^0x5A,0x3F^0x5A,
+        0x3D^0x5A,0x3F^0x5A,0x6C^0x5A,0x3B^0x5A,0x6F^0x5A,0x3F^0x5A,0x3F^0x5A,0x3C^0x5A,
+        0x6B^0x5A,0x6F^0x5A,0x6F^0x5A,0x6C^0x5A,0x6B^0x5A,0x6C^0x5A,0x3D^0x5A,0x3D^0x5A,
+        0x3B^0x5A,0x3C^0x5A,0x3C^0x5A,0x6A^0x5A,0x3E^0x5A,0x6A^0x5A,0x6C^0x5A,0x3C^0x5A,
+        0x3F^0x5A,0x3F^0x5A,0x3F^0x5A,0x3E^0x5A,0x3C^0x5A,0x3F^0x5A,0x3F^0x5A,0x3F^0x5A,
+        0x6F^0x5A,0x6A^0x5A,0x6C^0x5A,0x6B^0x5A,0x6F^0x5A,0x68^0x5A,0x3C^0x5A,0x3C^0x5A
+    };
+
+    std::string result;
+    for (int i = 0; i < 64; i++) {
+        result += (char)(data[i] ^ 0x5A);
+    }
+    return result;
+}
+
+// ==================== SIGNATURE ====================
 static bool isSignatureValid(JNIEnv* env, jobject context) {
 
     jclass contextClass = env->GetObjectClass(context);
@@ -66,7 +86,6 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
     jmethodID getPackageInfo = env->GetMethodID(pmClass, "getPackageInfo",
         "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
 
-    // 🔧 SUPPORT SEMUA ANDROID
     jclass versionClass = env->FindClass("android/os/Build$VERSION");
     jfieldID sdkField = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
     jint sdk = env->GetStaticIntField(versionClass, sdkField);
@@ -83,7 +102,6 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
     if (sdk >= 28) {
         jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
         jobject signingInfo = env->GetObjectField(packageInfo, signingInfoField);
-        if (signingInfo == nullptr) return false;
 
         jclass siClass = env->GetObjectClass(signingInfo);
         jmethodID getSigners = env->GetMethodID(siClass, "getApkContentsSigners",
@@ -97,7 +115,7 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
 
     if (signatures == nullptr) return false;
 
-    const char* ORIGINAL = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc";
+    std::string ORIGINAL = getOriginalSignature();
 
     jint len = env->GetArrayLength(signatures);
 
@@ -130,7 +148,7 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
 
         env->ReleaseByteArrayElements(digestBytes, data, 0);
 
-        if (strcmp(hex, ORIGINAL) == 0) {
+        if (strcmp(hex, ORIGINAL.c_str()) == 0) {
             return true;
         }
     }
