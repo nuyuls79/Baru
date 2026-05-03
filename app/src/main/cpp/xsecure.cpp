@@ -6,6 +6,7 @@
 #include <chrono>
 #include <stdlib.h>
 #include <cctype>
+#include <sys/ptrace.h>
 
 // ==================== BASE64 ====================
 static const std::string base64_chars =
@@ -71,7 +72,7 @@ static std::string getOriginalSignature() {
     return result;
 }
 
-// ==================== HASH FUNCTION (SPLIT) ====================
+// ==================== HASH ====================
 static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     jclass mdClass = env->FindClass("java/security/MessageDigest");
     jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance",
@@ -96,6 +97,15 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     env->ReleaseByteArrayElements(digestBytes, data, 0);
 
     return std::string(hex);
+}
+
+// ==================== ANTI DEBUG ====================
+static bool detectDebugging() {
+    if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) {
+        return true;
+    }
+    ptrace(PTRACE_DETACH, 0, 1, 0);
+    return false;
 }
 
 // ==================== SIGNATURE ====================
@@ -220,6 +230,7 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_getSecurityScoreNative(
     if (isSignatureValid(env, thiz)) score += 13;
     if (!isModifiedByTool(env, thiz)) score += 17;
     if (!isProxyOrVpnActive(env, thiz)) score += 19;
+    if (!detectDebugging()) score += 23;
 
     return score;
 }
@@ -245,6 +256,7 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, 
     if (!isSignatureValid(env, thiz)) exit(0);
     if (isModifiedByTool(env, thiz)) exit(0);
     if (isProxyOrVpnActive(env, thiz)) exit(0);
+    if (detectDebugging()) exit(0);
 }
 
 }
