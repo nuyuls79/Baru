@@ -66,26 +66,37 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
     jmethodID getPackageInfo = env->GetMethodID(pmClass, "getPackageInfo",
         "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
 
-    jint flags = 0x08000000; // API 28+
+    // 🔧 SUPPORT SEMUA ANDROID
+    jclass versionClass = env->FindClass("android/os/Build$VERSION");
+    jfieldID sdkField = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
+    jint sdk = env->GetStaticIntField(versionClass, sdkField);
+
+    jint flags = (sdk >= 28) ? 0x08000000 : 0x00000040;
 
     jobject packageInfo = env->CallObjectMethod(pm, getPackageInfo, packageName, flags);
     if (packageInfo == nullptr) return false;
 
     jclass piClass = env->GetObjectClass(packageInfo);
 
-    jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
-    jobject signingInfo = env->GetObjectField(packageInfo, signingInfoField);
+    jobjectArray signatures = nullptr;
 
-    if (signingInfo == nullptr) return false;
+    if (sdk >= 28) {
+        jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
+        jobject signingInfo = env->GetObjectField(packageInfo, signingInfoField);
+        if (signingInfo == nullptr) return false;
 
-    jclass siClass = env->GetObjectClass(signingInfo);
-    jmethodID getSigners = env->GetMethodID(siClass, "getApkContentsSigners",
-        "()[Landroid/content/pm/Signature;");
-    jobjectArray signatures = (jobjectArray)env->CallObjectMethod(signingInfo, getSigners);
+        jclass siClass = env->GetObjectClass(signingInfo);
+        jmethodID getSigners = env->GetMethodID(siClass, "getApkContentsSigners",
+            "()[Landroid/content/pm/Signature;");
+        signatures = (jobjectArray)env->CallObjectMethod(signingInfo, getSigners);
+    } else {
+        jfieldID sigField = env->GetFieldID(piClass, "signatures",
+            "[Landroid/content/pm/Signature;");
+        signatures = (jobjectArray)env->GetObjectField(packageInfo, sigField);
+    }
 
     if (signatures == nullptr) return false;
 
-    // 🔒 hash asli (lowercase)
     const char* ORIGINAL = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc";
 
     jint len = env->GetArrayLength(signatures);
@@ -95,10 +106,8 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
 
         jclass sigClass = env->GetObjectClass(sig);
         jmethodID toByteArray = env->GetMethodID(sigClass, "toByteArray", "()[B");
-
         jbyteArray sigBytes = (jbyteArray)env->CallObjectMethod(sig, toByteArray);
 
-        // 🔥 SHA-256 via Java (dipanggil dari native)
         jclass mdClass = env->FindClass("java/security/MessageDigest");
         jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance",
             "(Ljava/lang/String;)Ljava/security/MessageDigest;");
