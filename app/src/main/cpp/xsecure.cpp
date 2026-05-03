@@ -126,7 +126,13 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
 
 // ==================== ANTI DEBUG ====================
 static bool detectDebugging() {
-    if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) return true;
+    int result = ptrace(PTRACE_TRACEME, 0, 1, 0);
+
+    if (result == -1) {
+        // ⚠️ JANGAN langsung anggap debug
+        return false; // safe mode
+    }
+
     ptrace(PTRACE_DETACH, 0, 1, 0);
     return false;
 }
