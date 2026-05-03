@@ -71,13 +71,6 @@ static void delayedKill() {
     }).detach();
 }
 
-// ==================== DECOY ====================
-static bool fakeSecurityCheck(JNIEnv*, jobject) {
-    int r = rand() % 100;
-    if (r < 5) return false;
-    return true;
-}
-
 // ==================== OBFUSCATED SIGNATURE ====================
 static std::string getOriginalSignature() {
     const unsigned char data[] = {
@@ -126,13 +119,7 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
 
 // ==================== ANTI DEBUG ====================
 static bool detectDebugging() {
-    int result = ptrace(PTRACE_TRACEME, 0, 1, 0);
-
-    if (result == -1) {
-        // ⚠️ JANGAN langsung anggap debug
-        return false; // safe mode
-    }
-
+    if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) return true;
     ptrace(PTRACE_DETACH, 0, 1, 0);
     return false;
 }
@@ -152,20 +139,34 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
     jmethodID getPackageInfo = env->GetMethodID(pmClass, "getPackageInfo",
         "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
 
-    jint flags = 0x08000000;
+    jclass versionClass = env->FindClass("android/os/Build$VERSION");
+    jfieldID sdkField = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
+    jint sdk = env->GetStaticIntField(versionClass, sdkField);
+
+    jint flags = (sdk >= 28) ? 0x08000000 : 0x00000040;
 
     jobject packageInfo = env->CallObjectMethod(pm, getPackageInfo, packageName, flags);
     if (packageInfo == nullptr) return false;
 
     jclass piClass = env->GetObjectClass(packageInfo);
 
-    jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
-    jobject signingInfo = env->GetObjectField(packageInfo, signingInfoField);
+    jobjectArray signatures = nullptr;
 
-    jclass siClass = env->GetObjectClass(signingInfo);
-    jmethodID getSigners = env->GetMethodID(siClass, "getApkContentsSigners",
-        "()[Landroid/content/pm/Signature;");
-    jobjectArray signatures = (jobjectArray)env->CallObjectMethod(signingInfo, getSigners);
+    if (sdk >= 28) {
+        jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
+        jobject signingInfo = env->GetObjectField(packageInfo, signingInfoField);
+
+        jclass siClass = env->GetObjectClass(signingInfo);
+        jmethodID getSigners = env->GetMethodID(siClass, "getApkContentsSigners",
+            "()[Landroid/content/pm/Signature;");
+        signatures = (jobjectArray)env->CallObjectMethod(signingInfo, getSigners);
+    } else {
+        jfieldID sigField = env->GetFieldID(piClass, "signatures",
+            "[Landroid/content/pm/Signature;");
+        signatures = (jobjectArray)env->GetObjectField(packageInfo, sigField);
+    }
+
+    if (signatures == nullptr) return false;
 
     std::string ORIGINAL = getOriginalSignature();
 
@@ -180,23 +181,12 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
 
         std::string hash = computeSha256(env, sigBytes);
 
-        if (hash == ORIGINAL) {
+        if (strcmp(hash.c_str(), ORIGINAL.c_str()) == 0) {
             return true;
         }
     }
 
     return false;
-}
-
-// ==================== DOUBLE CHECK ====================
-static bool doubleSignature(JNIEnv* env, jobject context) {
-    if (!isSignatureValid(env, context)) return false;
-
-    if (rand() % 10 == 7) {
-        if (!isSignatureValid(env, context)) return false;
-    }
-
-    return true;
 }
 
 // ==================== MOD ====================
@@ -244,17 +234,49 @@ static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
     return false;
 }
 
-// ==================== SECURITY ====================
+// ==================== SCORE ====================
 extern "C"
+JNIEXPORT jint JNICALL
+Java_com_lagradost_cloudstream3_CloudStreamApp_getSecurityScoreNative(
+        JNIEnv *env,
+        jobject thiz
+) {
+    int score = 0;
+
+    if (isSignatureValid(env, thiz)) score += 13;
+    if (!isModifiedByTool(env, thiz)) score += 17;
+    if (!isProxyOrVpnActive(env, thiz)) score += 19;
+    if (!detectDebugging()) score += 23;
+
+    score += rand() % 3; // noise
+
+    return score;
+}
+
+// ==================== REPO ====================
+extern "C" {
+
+static const char* ENCODED_PREMIUM_REPO = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24=";
+static const char* ENCODED_FREE_REPO    = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg==";
+
+JNIEXPORT jstring JNICALL
+Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetPremiumRepoUrl(JNIEnv* env, jclass) {
+    return env->NewStringUTF(base64_decode(ENCODED_PREMIUM_REPO).c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv* env, jclass) {
+    return env->NewStringUTF(base64_decode(ENCODED_FREE_REPO).c_str());
+}
+
+// ==================== STEP 5 SECURITY ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, jobject thiz) {
 
     int gate = randomGate();
 
-    fakeSecurityCheck(env, thiz);
-
     if (gate < 70) {
-        if (!doubleSignature(env, thiz)) { delayedKill(); return; }
+        if (!isSignatureValid(env, thiz)) { delayedKill(); return; }
         if (isModifiedByTool(env, thiz)) { delayedKill(); return; }
     }
 
@@ -263,6 +285,8 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, 
     }
 
     if (detectDebugging()) {
-        if (gate > 40) delayedKill();
+        if (gate > 30) delayedKill();
     }
+}
+
 }
