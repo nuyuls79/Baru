@@ -8,7 +8,6 @@
 #include <cctype>
 #include <sys/ptrace.h>
 #include <ctime>
-#include <fstream>
 
 // ==================== BASE64 ====================
 static const std::string base64_chars =
@@ -72,54 +71,12 @@ static void delayedKill() {
     }).detach();
 }
 
-// ==================== SAFE DEBUG CHECK ====================
+// ==================== SAFE DEBUG ====================
 static bool detectDebugging() {
-    // ptrace unreliable → selalu safe
-    return false;
+    return false; // disable (tidak stabil di Android 6)
 }
 
-// ==================== FRIDA DETECTION ====================
-
-// 🔹 cek /proc/self/maps
-static bool detectFridaMaps() {
-    std::ifstream maps("/proc/self/maps");
-    std::string line;
-
-    while (std::getline(maps, line)) {
-        if (line.find("frida") != std::string::npos ||
-            line.find("gum-js") != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// 🔹 cek tracer pid
-static bool detectTracerPid() {
-    std::ifstream status("/proc/self/status");
-    std::string line;
-
-    while (std::getline(status, line)) {
-        if (line.find("TracerPid:") != std::string::npos) {
-            if (line.find("0") == std::string::npos) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-// 🔹 kombinasi (safe)
-static bool detectFrida() {
-    int hit = 0;
-
-    if (detectFridaMaps()) hit++;
-    if (detectTracerPid()) hit++;
-
-    return hit >= 2; // threshold → hindari false positive
-}
-
-// ==================== SIGNATURE ====================
+// ==================== OBFUSCATED SIGNATURE ====================
 static std::string getOriginalSignature() {
     const unsigned char data[] = {
         0x38^0x5A,0x6B^0x5A,0x6B^0x5A,0x6F^0x5A,0x63^0x5A,0x62^0x5A,0x63^0x5A,0x3B^0x5A,
@@ -165,7 +122,7 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     return std::string(hex);
 }
 
-// ==================== SIGNATURE VALID ====================
+// ==================== SIGNATURE ====================
 static bool isSignatureValid(JNIEnv* env, jobject context) {
 
     jclass contextClass = env->GetObjectClass(context);
@@ -257,22 +214,29 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, jobject thiz) {
 
+    static int globalSuspicion = 0;
+
     int gate = randomGate();
-    int suspicion = 0;
+    int localSuspicion = 0;
 
     if (gate < 60) {
-        if (!isSignatureValid(env, thiz)) suspicion++;
-        if (isModifiedByTool(env, thiz)) suspicion++;
+        if (!isSignatureValid(env, thiz)) localSuspicion++;
+        if (isModifiedByTool(env, thiz)) localSuspicion++;
     }
 
     if (gate % 2 == 0) {
-        if (isProxyOrVpnActive(env, thiz)) suspicion++;
+        if (isProxyOrVpnActive(env, thiz)) localSuspicion++;
     }
 
-    if (detectFrida()) suspicion++;
+    // 🔥 akumulasi (anti false positive)
+    if (localSuspicion > 0) {
+        globalSuspicion += localSuspicion;
+    } else {
+        if (globalSuspicion > 0) globalSuspicion--;
+    }
 
-    // 🔥 threshold kill (aman)
-    if (suspicion >= 2) {
+    // 🔥 threshold tinggi (stabil)
+    if (globalSuspicion >= 4) {
         delayedKill();
     }
 }
