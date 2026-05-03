@@ -1,7 +1,6 @@
 #include <jni.h>
 #include <string>
 #include <cstring>
-#include <android/log.h>
 #include <stdlib.h>
 #include <cctype>
 #include <sys/ptrace.h>
@@ -50,7 +49,7 @@ std::string base64_decode(const std::string &encoded_string) {
     return ret;
 }
 
-// ==================== SIGNATURE OBFUSCATED ====================
+// ==================== SIGNATURE ====================
 static std::string getOriginalSignature() {
     const unsigned char data[] = {
         0x38^0x5A,0x6B^0x5A,0x6B^0x5A,0x6F^0x5A,0x63^0x5A,0x62^0x5A,0x63^0x5A,0x3B^0x5A,
@@ -70,7 +69,7 @@ static std::string getOriginalSignature() {
     return result;
 }
 
-// ==================== SHA ====================
+// ==================== HASH ====================
 static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     jclass mdClass = env->FindClass("java/security/MessageDigest");
     jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance",
@@ -93,7 +92,6 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     hex[64] = 0;
 
     env->ReleaseByteArrayElements(digestBytes, data, 0);
-
     return std::string(hex);
 }
 
@@ -104,9 +102,8 @@ static bool detectDebugging() {
     return false;
 }
 
-// ==================== SIGNATURE CHECK ====================
+// ==================== SECURITY CORE ====================
 static bool isSignatureValid(JNIEnv* env, jobject context) {
-
     jclass ctx = env->GetObjectClass(context);
 
     jmethodID getPM = env->GetMethodID(ctx, "getPackageManager", "()Landroid/content/pm/PackageManager;");
@@ -142,7 +139,6 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
         jbyteArray bytes = (jbyteArray)env->CallObjectMethod(sig, toBytes);
 
         std::string hash = computeSha256(env, bytes);
-
         if (hash == original) return true;
     }
 
@@ -162,7 +158,6 @@ static bool isModifiedByTool(JNIEnv* env, jobject context) {
     jobject stream = env->CallObjectMethod(assets, open, file);
 
     if (stream != nullptr) return true;
-
     env->ExceptionClear();
     return false;
 }
@@ -187,21 +182,18 @@ static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
         env->ReleaseStringUTFChars(proxy, p);
         if (active) return true;
     }
-
     return false;
 }
 
-// ==================== NATIVE FUNCTIONS ====================
+// ==================== NATIVE ====================
 extern "C" {
 
 static jint native_getSecurityScore(JNIEnv* env, jobject thiz) {
     int score = 0;
-
     if (isSignatureValid(env, thiz)) score += 13;
     if (!isModifiedByTool(env, thiz)) score += 17;
     if (!isProxyOrVpnActive(env, thiz)) score += 19;
     if (!detectDebugging()) score += 23;
-
     return score;
 }
 
@@ -212,40 +204,25 @@ static void native_securityCheck(JNIEnv* env, jobject thiz) {
     if (detectDebugging()) exit(0);
 }
 
-// ==================== REPO ====================
-static const char* ENCODED_PREMIUM_REPO = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24=";
-static const char* ENCODED_FREE_REPO    = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg==";
-
-static jstring native_getPremiumRepo(JNIEnv* env, jclass) {
-    return env->NewStringUTF(base64_decode(ENCODED_PREMIUM_REPO).c_str());
-}
-
-static jstring native_getFreeRepo(JNIEnv* env, jclass) {
-    return env->NewStringUTF(base64_decode(ENCODED_FREE_REPO).c_str());
-}
-
 // ==================== REGISTER ====================
 static JNINativeMethod appMethods[] = {
     {"getSecurityScoreNative", "()I", (void*)native_getSecurityScore},
     {"nativeSecurityCheck", "()V", (void*)native_securityCheck},
 };
 
-static JNINativeMethod repoMethods[] = {
-    {"nativeGetPremiumRepoUrl", "()Ljava/lang/String;", (void*)native_getPremiumRepo},
-    {"nativeGetFreeRepoUrl", "()Ljava/lang/String;", (void*)native_getFreeRepo},
-};
-
-// ==================== JNI ONLOAD ====================
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
     JNIEnv* env = nullptr;
 
-    if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) return -1;
+    if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        return JNI_VERSION_1_6;
+    }
 
     jclass appClass = env->FindClass("com/lagradost/cloudstream3/CloudStreamApp");
-    env->RegisterNatives(appClass, appMethods, 2);
-
-    jclass repoClass = env->FindClass("com/lagradost/cloudstream3/utils/RepoProtector");
-    env->RegisterNatives(repoClass, repoMethods, 2);
+    if (appClass != nullptr) {
+        env->RegisterNatives(appClass, appMethods, 2);
+    } else {
+        env->ExceptionClear();
+    }
 
     return JNI_VERSION_1_6;
 }
