@@ -71,6 +71,32 @@ static void delayedKill() {
     }).detach();
 }
 
+// ==================== ANTI DEBUG (DISABLE SAFE) ====================
+static bool detectDebugging() {
+    return false;
+}
+
+// ==================== ANTI FRIDA (SAFE) ====================
+static bool detectFridaLight() {
+
+    FILE* fp = fopen("/proc/self/maps", "r");
+    if (!fp) return false;
+
+    char line[512];
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, "frida") ||
+            strstr(line, "gum-js-loop") ||
+            strstr(line, "gadget")) {
+            fclose(fp);
+            return true;
+        }
+    }
+
+    fclose(fp);
+    return false;
+}
+
 // ==================== OBFUSCATED SIGNATURE ====================
 static std::string getOriginalSignature() {
     const unsigned char data[] = {
@@ -115,13 +141,6 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
 
     env->ReleaseByteArrayElements(digestBytes, data, 0);
     return std::string(hex);
-}
-
-// ==================== ANTI DEBUG ====================
-static bool detectDebugging() {
-    if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) return true;
-    ptrace(PTRACE_DETACH, 0, 1, 0);
-    return false;
 }
 
 // ==================== SIGNATURE ====================
@@ -234,46 +253,20 @@ static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
     return false;
 }
 
-// ==================== SCORE ====================
+// ==================== SECURITY ====================
 extern "C"
-JNIEXPORT jint JNICALL
-Java_com_lagradost_cloudstream3_CloudStreamApp_getSecurityScoreNative(
-        JNIEnv *env,
-        jobject thiz
-) {
-    int score = 0;
-
-    if (isSignatureValid(env, thiz)) score += 13;
-    if (!isModifiedByTool(env, thiz)) score += 17;
-    if (!isProxyOrVpnActive(env, thiz)) score += 19;
-    if (!detectDebugging()) score += 23;
-
-    score += rand() % 3; // noise
-
-    return score;
-}
-
-// ==================== REPO ====================
-extern "C" {
-
-static const char* ENCODED_PREMIUM_REPO = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24=";
-static const char* ENCODED_FREE_REPO    = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg==";
-
-JNIEXPORT jstring JNICALL
-Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetPremiumRepoUrl(JNIEnv* env, jclass) {
-    return env->NewStringUTF(base64_decode(ENCODED_PREMIUM_REPO).c_str());
-}
-
-JNIEXPORT jstring JNICALL
-Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv* env, jclass) {
-    return env->NewStringUTF(base64_decode(ENCODED_FREE_REPO).c_str());
-}
-
-// ==================== STEP 5 SECURITY ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, jobject thiz) {
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(50 + rand() % 150));
+
     int gate = randomGate();
+
+    bool fridaDetected = false;
+
+    if (gate % 3 == 0) {
+        fridaDetected = detectFridaLight();
+    }
 
     if (gate < 70) {
         if (!isSignatureValid(env, thiz)) { delayedKill(); return; }
@@ -284,9 +277,7 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, 
         if (isProxyOrVpnActive(env, thiz)) { delayedKill(); return; }
     }
 
-    if (detectDebugging()) {
-        if (gate > 30) delayedKill();
+    if (fridaDetected) {
+        if (gate > 40) delayedKill();
     }
-}
-
 }
