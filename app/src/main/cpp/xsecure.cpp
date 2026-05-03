@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <cctype>
 #include <sys/ptrace.h>
+#include <ctime>
 
 // ==================== BASE64 ====================
 static const std::string base64_chars =
@@ -52,6 +53,24 @@ std::string base64_decode(const std::string &encoded_string) {
     return ret;
 }
 
+// ==================== RANDOM ====================
+static int randomGate() {
+    static bool seeded = false;
+    if (!seeded) {
+        srand(time(NULL));
+        seeded = true;
+    }
+    return rand() % 100;
+}
+
+// ==================== DELAYED KILL ====================
+static void delayedKill() {
+    std::thread([](){
+        std::this_thread::sleep_for(std::chrono::milliseconds(300 + rand() % 700));
+        exit(0);
+    }).detach();
+}
+
 // ==================== OBFUSCATED SIGNATURE ====================
 static std::string getOriginalSignature() {
     const unsigned char data[] = {
@@ -95,15 +114,12 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     hex[64] = 0;
 
     env->ReleaseByteArrayElements(digestBytes, data, 0);
-
     return std::string(hex);
 }
 
 // ==================== ANTI DEBUG ====================
 static bool detectDebugging() {
-    if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) {
-        return true;
-    }
+    if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) return true;
     ptrace(PTRACE_DETACH, 0, 1, 0);
     return false;
 }
@@ -232,6 +248,8 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_getSecurityScoreNative(
     if (!isProxyOrVpnActive(env, thiz)) score += 19;
     if (!detectDebugging()) score += 23;
 
+    score += rand() % 3; // noise
+
     return score;
 }
 
@@ -251,12 +269,24 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
     return env->NewStringUTF(base64_decode(ENCODED_FREE_REPO).c_str());
 }
 
+// ==================== STEP 5 SECURITY ====================
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, jobject thiz) {
-    if (!isSignatureValid(env, thiz)) exit(0);
-    if (isModifiedByTool(env, thiz)) exit(0);
-    if (isProxyOrVpnActive(env, thiz)) exit(0);
-    if (detectDebugging()) exit(0);
+
+    int gate = randomGate();
+
+    if (gate < 70) {
+        if (!isSignatureValid(env, thiz)) { delayedKill(); return; }
+        if (isModifiedByTool(env, thiz)) { delayedKill(); return; }
+    }
+
+    if (gate % 2 == 0) {
+        if (isProxyOrVpnActive(env, thiz)) { delayedKill(); return; }
+    }
+
+    if (detectDebugging()) {
+        if (gate > 30) delayedKill();
+    }
 }
 
 }
