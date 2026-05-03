@@ -1,12 +1,10 @@
 #include <jni.h>
 #include <string>
 #include <cstring>
-#include <android/log.h>
 #include <thread>
 #include <chrono>
 #include <stdlib.h>
 #include <cctype>
-#include <sys/ptrace.h>
 #include <ctime>
 
 // ==================== BASE64 ====================
@@ -71,12 +69,7 @@ static void delayedKill() {
     }).detach();
 }
 
-// ==================== SAFE DEBUG ====================
-static bool detectDebugging() {
-    return false; // disable (tidak stabil di Android 6)
-}
-
-// ==================== OBFUSCATED SIGNATURE ====================
+// ==================== SIGNATURE OBFUS ====================
 static std::string getOriginalSignature() {
     const unsigned char data[] = {
         0x38^0x5A,0x6B^0x5A,0x6B^0x5A,0x6F^0x5A,0x63^0x5A,0x62^0x5A,0x63^0x5A,0x3B^0x5A,
@@ -96,7 +89,7 @@ static std::string getOriginalSignature() {
     return result;
 }
 
-// ==================== HASH ====================
+// ==================== SHA256 ====================
 static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     jclass mdClass = env->FindClass("java/security/MessageDigest");
     jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance",
@@ -125,6 +118,13 @@ static std::string computeSha256(JNIEnv* env, jbyteArray input) {
 // ==================== SIGNATURE ====================
 static bool isSignatureValid(JNIEnv* env, jobject context) {
 
+    jclass versionClass = env->FindClass("android/os/Build$VERSION");
+    jfieldID sdkField = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
+    jint sdk = env->GetStaticIntField(versionClass, sdkField);
+
+    // 🔥 bypass Android 6–8
+    if (sdk < 28) return true;
+
     jclass contextClass = env->GetObjectClass(context);
 
     jmethodID getPackageName = env->GetMethodID(contextClass, "getPackageName", "()Ljava/lang/String;");
@@ -137,13 +137,19 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
     jmethodID getPackageInfo = env->GetMethodID(pmClass, "getPackageInfo",
         "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;");
 
-    jobject packageInfo = env->CallObjectMethod(pm, getPackageInfo, packageName, 0x00000040);
+    jobject packageInfo = env->CallObjectMethod(pm, getPackageInfo, packageName, 0x08000000);
     if (packageInfo == nullptr) return false;
 
     jclass piClass = env->GetObjectClass(packageInfo);
-    jfieldID sigField = env->GetFieldID(piClass, "signatures",
-        "[Landroid/content/pm/Signature;");
-    jobjectArray signatures = (jobjectArray)env->GetObjectField(packageInfo, sigField);
+    jfieldID signingInfoField = env->GetFieldID(piClass, "signingInfo", "Landroid/content/pm/SigningInfo;");
+    jobject signingInfo = env->GetObjectField(packageInfo, signingInfoField);
+
+    if (signingInfo == nullptr) return false;
+
+    jclass siClass = env->GetObjectClass(signingInfo);
+    jmethodID getSigners = env->GetMethodID(siClass, "getApkContentsSigners",
+        "()[Landroid/content/pm/Signature;");
+    jobjectArray signatures = (jobjectArray)env->CallObjectMethod(signingInfo, getSigners);
 
     std::string ORIGINAL = getOriginalSignature();
 
@@ -228,15 +234,13 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(JNIEnv* env, 
         if (isProxyOrVpnActive(env, thiz)) localSuspicion++;
     }
 
-    // 🔥 akumulasi (anti false positive)
     if (localSuspicion > 0) {
         globalSuspicion += localSuspicion;
     } else {
         if (globalSuspicion > 0) globalSuspicion--;
     }
 
-    // 🔥 threshold tinggi (stabil)
-    if (globalSuspicion >= 4) {
+    if (globalSuspicion >= 6) {
         delayedKill();
     }
 }
