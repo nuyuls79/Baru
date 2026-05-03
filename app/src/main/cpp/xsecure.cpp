@@ -62,8 +62,10 @@ static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
         "()Landroid/content/ContentResolver;");
     jobject contentResolver = env->CallObjectMethod(context, getContentResolver);
 
+    jstring key = env->NewStringUTF("http_proxy");
     jstring httpProxy = (jstring)env->CallStaticObjectMethod(settingsClass, getString,
-        contentResolver, env->NewStringUTF("http_proxy"));
+        contentResolver, key);
+    env->DeleteLocalRef(key);
 
     if (httpProxy != nullptr) {
         const char* proxyStr = env->GetStringUTFChars(httpProxy, nullptr);
@@ -114,7 +116,7 @@ static void clearAllCache(JNIEnv* env, jobject context) {
     }
 }
 
-// ==================== SCORE (INI YANG DIPAKAI) ====================
+// ==================== SCORE (FULL NATIVE ENTRY) ====================
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_getSecurityScoreNative(
@@ -123,9 +125,15 @@ Java_com_lagradost_cloudstream3_CloudStreamApp_getSecurityScoreNative(
 ) {
     int score = 0;
 
-    if (isSignatureValid(env, thiz)) score += 13;
-    if (!isModifiedByTool(env, thiz)) score += 17;
-    if (!isProxyOrVpnActive(env, thiz)) score += 19;
+    jclass cls = env->GetObjectClass(thiz);
+
+    jmethodID sigMethod = env->GetMethodID(cls, "isSignatureValid", "()Z");
+    jmethodID modMethod = env->GetMethodID(cls, "isModifiedByTool", "()Z");
+    jmethodID vpnMethod = env->GetMethodID(cls, "isProxyOrVpnActive", "()Z");
+
+    if (sigMethod && env->CallBooleanMethod(thiz, sigMethod)) score += 13;
+    if (modMethod && !env->CallBooleanMethod(thiz, modMethod)) score += 17;
+    if (vpnMethod && !env->CallBooleanMethod(thiz, vpnMethod)) score += 19;
 
     return score;
 }
