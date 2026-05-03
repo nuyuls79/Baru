@@ -46,10 +46,11 @@ std::string base64_decode(const std::string &encoded_string) {
 
         for (j = 0; j < i - 1; j++) ret += char_array_3[j];
     }
+
     return ret;
 }
 
-// ==================== SIGNATURE ====================
+// ==================== SIGNATURE (OBFUSCATED) ====================
 static std::string getOriginalSignature() {
     const unsigned char data[] = {
         0x38^0x5A,0x6B^0x5A,0x6B^0x5A,0x6F^0x5A,0x63^0x5A,0x62^0x5A,0x63^0x5A,0x3B^0x5A,
@@ -69,7 +70,7 @@ static std::string getOriginalSignature() {
     return result;
 }
 
-// ==================== HASH ====================
+// ==================== SHA256 ====================
 static std::string computeSha256(JNIEnv* env, jbyteArray input) {
     jclass mdClass = env->FindClass("java/security/MessageDigest");
     jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance",
@@ -102,7 +103,7 @@ static bool detectDebugging() {
     return false;
 }
 
-// ==================== SECURITY CORE ====================
+// ==================== SIGNATURE CHECK ====================
 static bool isSignatureValid(JNIEnv* env, jobject context) {
     jclass ctx = env->GetObjectClass(context);
 
@@ -182,49 +183,37 @@ static bool isProxyOrVpnActive(JNIEnv* env, jobject context) {
         env->ReleaseStringUTFChars(proxy, p);
         if (active) return true;
     }
+
     return false;
 }
 
-// ==================== NATIVE ====================
+// ==================== JNI ====================
 extern "C" {
 
-static jint native_getSecurityScore(JNIEnv* env, jobject thiz) {
+JNIEXPORT jint JNICALL
+Java_com_lagradost_cloudstream3_CloudStreamApp_getSecurityScoreNative(
+        JNIEnv *env,
+        jobject thiz
+) {
     int score = 0;
+
     if (isSignatureValid(env, thiz)) score += 13;
     if (!isModifiedByTool(env, thiz)) score += 17;
     if (!isProxyOrVpnActive(env, thiz)) score += 19;
     if (!detectDebugging()) score += 23;
+
     return score;
 }
 
-static void native_securityCheck(JNIEnv* env, jobject thiz) {
+JNIEXPORT void JNICALL
+Java_com_lagradost_cloudstream3_CloudStreamApp_nativeSecurityCheck(
+        JNIEnv *env,
+        jobject thiz
+) {
     if (!isSignatureValid(env, thiz)) exit(0);
     if (isModifiedByTool(env, thiz)) exit(0);
     if (isProxyOrVpnActive(env, thiz)) exit(0);
     if (detectDebugging()) exit(0);
-}
-
-// ==================== REGISTER ====================
-static JNINativeMethod appMethods[] = {
-    {"getSecurityScoreNative", "()I", (void*)native_getSecurityScore},
-    {"nativeSecurityCheck", "()V", (void*)native_securityCheck},
-};
-
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
-    JNIEnv* env = nullptr;
-
-    if (vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
-        return JNI_VERSION_1_6;
-    }
-
-    jclass appClass = env->FindClass("com/lagradost/cloudstream3/CloudStreamApp");
-    if (appClass != nullptr) {
-        env->RegisterNatives(appClass, appMethods, 2);
-    } else {
-        env->ExceptionClear();
-    }
-
-    return JNI_VERSION_1_6;
 }
 
 }
