@@ -71,6 +71,33 @@ static std::string getOriginalSignature() {
     return result;
 }
 
+// ==================== HASH FUNCTION (SPLIT) ====================
+static std::string computeSha256(JNIEnv* env, jbyteArray input) {
+    jclass mdClass = env->FindClass("java/security/MessageDigest");
+    jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance",
+        "(Ljava/lang/String;)Ljava/security/MessageDigest;");
+    jobject md = env->CallStaticObjectMethod(mdClass, getInstance, env->NewStringUTF("SHA-256"));
+
+    jmethodID update = env->GetMethodID(mdClass, "update", "([B)V");
+    env->CallVoidMethod(md, update, input);
+
+    jmethodID digest = env->GetMethodID(mdClass, "digest", "()[B");
+    jbyteArray digestBytes = (jbyteArray)env->CallObjectMethod(md, digest);
+
+    jsize size = env->GetArrayLength(digestBytes);
+    jbyte* data = env->GetByteArrayElements(digestBytes, nullptr);
+
+    char hex[65];
+    for (int i = 0; i < size; i++) {
+        sprintf(hex + (i * 2), "%02x", (unsigned char)data[i]);
+    }
+    hex[64] = 0;
+
+    env->ReleaseByteArrayElements(digestBytes, data, 0);
+
+    return std::string(hex);
+}
+
 // ==================== SIGNATURE ====================
 static bool isSignatureValid(JNIEnv* env, jobject context) {
 
@@ -126,29 +153,9 @@ static bool isSignatureValid(JNIEnv* env, jobject context) {
         jmethodID toByteArray = env->GetMethodID(sigClass, "toByteArray", "()[B");
         jbyteArray sigBytes = (jbyteArray)env->CallObjectMethod(sig, toByteArray);
 
-        jclass mdClass = env->FindClass("java/security/MessageDigest");
-        jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance",
-            "(Ljava/lang/String;)Ljava/security/MessageDigest;");
-        jobject md = env->CallStaticObjectMethod(mdClass, getInstance, env->NewStringUTF("SHA-256"));
+        std::string hash = computeSha256(env, sigBytes);
 
-        jmethodID update = env->GetMethodID(mdClass, "update", "([B)V");
-        env->CallVoidMethod(md, update, sigBytes);
-
-        jmethodID digest = env->GetMethodID(mdClass, "digest", "()[B");
-        jbyteArray digestBytes = (jbyteArray)env->CallObjectMethod(md, digest);
-
-        jsize size = env->GetArrayLength(digestBytes);
-        jbyte* data = env->GetByteArrayElements(digestBytes, nullptr);
-
-        char hex[65];
-        for (int j = 0; j < size; j++) {
-            sprintf(hex + (j * 2), "%02x", (unsigned char)data[j]);
-        }
-        hex[64] = 0;
-
-        env->ReleaseByteArrayElements(digestBytes, data, 0);
-
-        if (strcmp(hex, ORIGINAL.c_str()) == 0) {
+        if (strcmp(hash.c_str(), ORIGINAL.c_str()) == 0) {
             return true;
         }
     }
