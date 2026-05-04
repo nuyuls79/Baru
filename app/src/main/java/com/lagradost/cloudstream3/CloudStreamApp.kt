@@ -5,35 +5,38 @@ import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
-import android.widget.Toast
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
+import android.provider.Settings
+import androidx.annotation.Keep
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import com.lagradost.api.setContext
-import com.lagradost.cloudstream3.mvvm.safe
-import com.lagradost.cloudstream3.mvvm.safeAsync
 import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.AppContextUtils.openBrowser
-import com.lagradost.cloudstream3.utils.Coroutines.runOnMainThread
 import com.lagradost.cloudstream3.utils.DataStore.getKey
 import com.lagradost.cloudstream3.utils.DataStore.getKeys
 import com.lagradost.cloudstream3.utils.DataStore.removeKey
 import com.lagradost.cloudstream3.utils.DataStore.removeKeys
 import com.lagradost.cloudstream3.utils.DataStore.setKey
 import com.lagradost.cloudstream3.utils.ImageLoader.buildImageLoader
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.PrintStream
 import java.lang.ref.WeakReference
-import java.util.Locale
-import kotlin.concurrent.thread
+import java.security.MessageDigest
 import kotlin.system.exitProcess
 
 class ExceptionHandler(
@@ -68,37 +71,18 @@ class ExceptionHandler(
 @Prerelease
 class CloudStreamApp : Application(), SingletonImageLoader.Factory {
 
-    override fun onCreate() {
-        super.onCreate()
-        // If we want to initialize Coil as early as possible, maybe when
-        // loading an image or GIF in a splash screen activity.
-        // buildImageLoader(applicationContext)
+    private var activityCount = 0
 
-        ExceptionHandler(filesDir.resolve("last_error")) {
-            val intent = context!!.packageManager.getLaunchIntentForPackage(context!!.packageName)
-            startActivity(Intent.makeRestartActivityTask(intent!!.component))
-        }.also {
-            exceptionHandler = it
-            Thread.setDefaultUncaughtExceptionHandler(it)
-        }
-    }
+    private val ORIGINAL_SIGNATURE = "b115983ab9dffa173ee350fee7a6eef515cbb16d0d06c4054579cdc6487e68fc"
 
-    override fun attachBaseContext(base: Context?) {
-        super.attachBaseContext(base)
-        context = base
-        // This can be removed without deprecation after next stable
-        AcraApplication.context = context
-    }
-
-    override fun newImageLoader(context: PlatformContext): ImageLoader {
-        // Coil module will be initialized globally when first loadImage() is invoked.
-        return buildImageLoader(applicationContext)
-    }
-
+    // ==================== LOAD NATIVE ====================
     companion object {
+        init {
+            System.loadLibrary("xsecure")
+        }
+
         var exceptionHandler: ExceptionHandler? = null
 
-        /** Use to get Activity from Context. */
         tailrec fun Context.getActivity(): Activity? {
             return when (this) {
                 is Activity -> this
@@ -115,60 +99,23 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 setContext(WeakReference(value))
             }
 
-        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? {
-            return context?.getKey(path, valueType)
-        }
+        fun <T : Any> getKeyClass(path: String, valueType: Class<T>): T? = context?.getKey(path, valueType)
+        fun <T : Any> setKeyClass(path: String, value: T) { context?.setKey(path, value) }
+        fun removeKeys(folder: String): Int? = context?.removeKeys(folder)
+        fun <T> setKey(path: String, value: T) { context?.setKey(path, value) }
+        fun <T> setKey(folder: String, path: String, value: T) { context?.setKey(folder, path, value) }
+        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? = context?.getKey(path, defVal)
+        inline fun <reified T : Any> getKey(path: String): T? = context?.getKey(path)
+        inline fun <reified T : Any> getKey(folder: String, path: String): T? = context?.getKey(folder, path)
+        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? = context?.getKey(folder, path, defVal)
+        fun getKeys(folder: String): List<String>? = context?.getKeys(folder)
+        fun removeKey(folder: String, path: String) { context?.removeKey(folder, path) }
+        fun removeKey(path: String) { context?.removeKey(path) }
 
-        fun <T : Any> setKeyClass(path: String, value: T) {
-            context?.setKey(path, value)
-        }
-
-        fun removeKeys(folder: String): Int? {
-            return context?.removeKeys(folder)
-        }
-
-        fun <T> setKey(path: String, value: T) {
-            context?.setKey(path, value)
-        }
-
-        fun <T> setKey(folder: String, path: String, value: T) {
-            context?.setKey(folder, path, value)
-        }
-
-        inline fun <reified T : Any> getKey(path: String, defVal: T?): T? {
-            return context?.getKey(path, defVal)
-        }
-
-        inline fun <reified T : Any> getKey(path: String): T? {
-            return context?.getKey(path)
-        }
-
-        inline fun <reified T : Any> getKey(folder: String, path: String): T? {
-            return context?.getKey(folder, path)
-        }
-
-        inline fun <reified T : Any> getKey(folder: String, path: String, defVal: T?): T? {
-            return context?.getKey(folder, path, defVal)
-        }
-
-        fun getKeys(folder: String): List<String>? {
-            return context?.getKeys(folder)
-        }
-
-        fun removeKey(folder: String, path: String) {
-            context?.removeKey(folder, path)
-        }
-
-        fun removeKey(path: String) {
-            context?.removeKey(path)
-        }
-
-        /** If fallbackWebView is true and a fragment is supplied then it will open a WebView with the URL if the browser fails. */
         fun openBrowser(url: String, fallbackWebView: Boolean = false, fragment: Fragment? = null) {
             context?.openBrowser(url, fallbackWebView, fragment)
         }
 
-        /** Will fall back to WebView if in TV or emulator layout. */
         fun openBrowser(url: String, activity: FragmentActivity?) {
             openBrowser(
                 url,
@@ -176,5 +123,155 @@ class CloudStreamApp : Application(), SingletonImageLoader.Factory {
                 activity?.supportFragmentManager?.fragments?.lastOrNull()
             )
         }
+    }
+
+    // ==================== NATIVE FUNCTION ====================
+    external fun getSecurityScoreNative(): Int
+
+    private val monitorHandler = Handler(Looper.getMainLooper())
+
+    private val monitorRunnable = object : Runnable {
+        override fun run() {
+            if (isProxyOrVpnActive()) {
+                performSilentKill()
+            } else {
+                monitorHandler.postDelayed(this, 1000)
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+
+        if (!BuildConfig.DEBUG) {
+            val sec = getSecurityScoreNative()
+            android.util.Log.e("SECURITY_DEBUG", "score=$sec")
+
+            if (sec < 30) {
+                performSilentKill()
+                return
+            }
+        }
+
+        if (isProxyOrVpnActive()) {
+            performSilentKill()
+            return
+        }
+
+        monitorHandler.postDelayed(monitorRunnable, 1000)
+
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) { activityCount++ }
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {
+                activityCount--
+                if (activityCount <= 0) clearAllCache()
+            }
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
+
+        ExceptionHandler(filesDir.resolve("last_error")) {
+            val intent = context!!.packageManager.getLaunchIntentForPackage(context!!.packageName)
+            startActivity(Intent.makeRestartActivityTask(intent!!.component))
+        }.also {
+            exceptionHandler = it
+            Thread.setDefaultUncaughtExceptionHandler(it)
+        }
+    }
+
+    // ==================== EXISTING LOGIC (JANGAN DIHAPUS) ====================
+
+    @Keep
+    private fun isSignatureValid(): Boolean {
+        if (ORIGINAL_SIGNATURE.isBlank()) return true
+        return try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            }
+
+            val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.signingInfo?.apkContentsSigners
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.signatures
+            }
+
+            signatures?.any { sig ->
+                val md = MessageDigest.getInstance("SHA-256")
+                md.update(sig.toByteArray())
+                val digest = md.digest()
+                val currentSignature = digest.joinToString("") {
+                    String.format("%02x", it)
+                }
+                ORIGINAL_SIGNATURE.equals(currentSignature, true)
+            } == true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @Keep
+    private fun isModifiedByTool(): Boolean {
+        return try {
+            assets.open("assets/pms").close()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @Keep
+    private fun isProxyOrVpnActive(): Boolean {
+        val proxyAddress = System.getProperty("http.proxyHost") ?: System.getProperty("https.proxyHost")
+        val proxyPort = System.getProperty("http.proxyPort") ?: System.getProperty("https.proxyPort")
+
+        if (!proxyAddress.isNullOrBlank() && !proxyPort.isNullOrBlank()) return true
+
+        try {
+            val httpProxy = Settings.Global.getString(contentResolver, Settings.Global.HTTP_PROXY)
+            if (!httpProxy.isNullOrBlank() && httpProxy != ":0") return true
+        } catch (_: Exception) {}
+
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
+        }
+        return false
+    }
+
+    @Keep
+    private fun performSilentKill() {
+        monitorHandler.removeCallbacks(monitorRunnable)
+        clearAllCache()
+        Process.killProcess(Process.myPid())
+        exitProcess(0)
+    }
+
+    @Keep
+    private fun clearAllCache() {
+        try {
+            cacheDir?.deleteRecursively()
+            externalCacheDir?.deleteRecursively()
+            val tempDir = File(filesDir, "temp")
+            if (tempDir.exists()) tempDir.deleteRecursively()
+        } catch (_: Exception) {}
+    }
+
+    override fun attachBaseContext(base: Context?) {
+        super.attachBaseContext(base)
+        context = base
+        AcraApplication.context = context
+    }
+
+    override fun newImageLoader(context: PlatformContext): ImageLoader {
+        return buildImageLoader(applicationContext)
     }
 }

@@ -19,3 +19,29 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# ============================================================
+# ATURAN R8 UNTUK ADIXTREAM (PLUGIN-SAFE)
+# ============================================================
+
+-keepattributes Signature
+-keepattributes *Annotation
+
+-keep class com.lagradost.cloudstream3.utils.RepoProtector {
+    native <methods>;
+    public static *;
+}
+
+-keep class com.lagradost.cloudstream3.** { *; }
+-keep class org.jsoup.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+
+-keepclassmembers class * {
+    @com.fasterxml.jackson.annotation.JsonProperty <fields>;
+}
+
+-dontwarn com.google.re2j.**
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-ignorewarnings
