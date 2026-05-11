@@ -181,10 +181,10 @@ object PremiumDialogManager {
             layoutParams = LinearLayout.LayoutParams(-1, if(isTv) 180.toPx else -2).apply { setMargins(40, 0, 40, 0) }
             adjustViewBounds = true 
             scaleType = ImageView.ScaleType.FIT_CENTER
-            loadImage("https://raw.githubusercontent.com/michat88/Zaneta/main/Icons/qris.png") 
+            loadImage("https://raw.githubusercontent.com/nuyuls79/Premix/main/Icon/qris.png") 
         }
         val qrisFooter = TextView(activity).apply {
-            text = "OVO / DANA / GOPAY / SHOPEEPAY / BANK"
+            text = "OVO / DANA / GOPAY / SHOPEEPAY "
             textSize = 11f
             setTextColor(android.graphics.Color.parseColor("#B3B3B3"))
             gravity = Gravity.CENTER
