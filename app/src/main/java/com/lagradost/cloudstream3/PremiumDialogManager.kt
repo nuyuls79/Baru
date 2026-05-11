@@ -310,10 +310,10 @@ object PremiumDialogManager {
             // PENANGANAN KHUSUS TV UNTUK TELEGRAM
             setOnClickListener {
                 if (isTv) {
-                    Toast.makeText(activity, "Gunakan HP Anda untuk menghubungi Admin via Telegram: @michat88", Toast.LENGTH_LONG).show()
+                    Toast.makeText(activity, "Gunakan HP Anda untuk menghubungi Admin via Telegram: @Dede_roges", Toast.LENGTH_LONG).show()
                 } else {
                     try {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/michat88"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/Dede_roges"))
                         activity.startActivity(intent)
                     } catch (e: Exception) { 
                         Toast.makeText(activity, "Telegram tidak ditemukan", Toast.LENGTH_SHORT).show() 
