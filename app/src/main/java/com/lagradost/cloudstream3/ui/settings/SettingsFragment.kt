@@ -247,54 +247,6 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
             }
             // --------------------------------------------------------
 
-            // --- 2. MODIFIKASI ADIXTREAM: LOGIKA TOMBOL TENTANG (MERAH PUTIH) ---
-            // Menggunakan appVersionInfo sebagai tombol "About"
-            appVersionInfo.setOnClickListener {
-                val builder = AlertDialog.Builder(requireContext(), R.style.AlertDialogCustom)
-                builder.setTitle("Tentang AdiXtream")
-                builder.setMessage("AdiXtream dikembangkan oleh michat88.\n\nAplikasi ini berbasis pada proyek open-source CloudStream.\n\nTerima kasih kepada Developer CloudStream (Lagradost & Tim) atas kode sumber yang luar biasa ini.")
-
-                // PERBAIKAN NAMA TOMBOL: Menjadi "Kunjungi Website"
-                builder.setNeutralButton("Kunjungi Website") { _, _ ->
-                    try {
-                        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://michat88.github.io/adixtream-web/"))
-                        startActivity(browserIntent)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-
-                builder.setPositiveButton("Tutup") { dialog, _ ->
-                    dialog.dismiss()
-                }
-
-                val dialog: AlertDialog = builder.create()
-                dialog.show()
-
-                // Penyesuaian Efek Warna Merah Putih
-                val webButton: Button? = dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
-                webButton?.let { button ->
-                    val fullText = "Kunjungi Website"
-                    val spannable = SpannableString(fullText)
-
-                    // Mewarnai "Kunjungi" (Indeks 0-8) menjadi Merah
-                    spannable.setSpan(
-                        ForegroundColorSpan(Color.parseColor("#FF0000")),
-                        0, 8,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-
-                    // Mewarnai sisanya (" Website") (Indeks 8-akhir) menjadi Putih
-                    spannable.setSpan(
-                        ForegroundColorSpan(Color.WHITE),
-                        8, fullText.length,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-
-                    button.text = spannable
-                }
-            }
-            // --------------------------------------------------
 
             // --- 3. DAFTAR MENU LAINNYA ---
             listOf(
