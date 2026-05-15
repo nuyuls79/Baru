@@ -205,6 +205,7 @@ import java.nio.charset.Charset
 import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.system.exitProcess
+import kotlinx.coroutines.delay
 import com.lagradost.cloudstream3.utils.downloader.DownloadQueueManager
 
 // --- IMPORT TAMBAHAN ADIXTREAM ---
@@ -1077,32 +1078,131 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         setNavigationBarColorCompat(R.attr.primaryGrayBackground)
         updateLocale()
 
-        // --- LOGIKA REPOSITORY & UPDATE (ADIXTREAM ANTI-BUG V4 - POLLING SYSTEM) ---
+        // --- LOGIKA REPOSITORY & UPDATE (ADIXTREAM STABLE FINAL) ---
         ioSafe {
-            val isPremium = PremiumManager.isPremium(this@MainActivity)
-            val targetRepoUrl = if (isPremium) PremiumManager.getPremiumRepoUrl() else PremiumManager.getFreeRepoUrl()
-
-            val currentRepos = RepositoryManager.getRepositories()
-            val hasTargetRepo = currentRepos.any { it.url == targetRepoUrl }
-            val hasInvalidRepos = currentRepos.any { it.url != targetRepoUrl }
-
-            var isRepoChanged = false
-
-            if (!hasTargetRepo || hasInvalidRepos) {
-                Log.d(TAG, "Status Repo tidak sinkron. Melakukan penyesuaian otomatis...")
-                currentRepos.forEach { repo ->
-                    RepositoryManager.removeRepository(this@MainActivity, repo)
+        
+            val isPremiumUser =
+                PremiumManager.isPremium(this@MainActivity)
+        
+            val targetRepoUrl =
+                if (isPremiumUser) {
+                    PremiumManager.getPremiumRepoUrl()
+                } else {
+                    PremiumManager.getFreeRepoUrl()
                 }
-                try {
-                    val parsedRepo = RepositoryManager.parseRepository(targetRepoUrl)
-                    if (parsedRepo != null) {
-                        val repoData = RepositoryData(parsedRepo.iconUrl, parsedRepo.name, targetRepoUrl)
-                        RepositoryManager.addRepository(repoData)
-                        isRepoChanged = true
-                        Log.d(TAG, "Repo berhasil disinkronkan ke: $targetRepoUrl")
-                    }
-                } catch (e: Exception) { logError(e) }
+        
+            Log.d(
+                TAG,
+                "Premium=$isPremiumUser"
+            )
+        
+            Log.d(
+                TAG,
+                "TargetRepo=$targetRepoUrl"
+            )
+        
+            val currentRepos =
+                RepositoryManager.getRepositories()
+        
+            var repoNeedsReset = false
+        
+            // ==================== VALIDASI REPO ====================
+            if (currentRepos.isEmpty()) {
+                repoNeedsReset = true
             }
+        
+            if (
+                currentRepos.none {
+                    it.url == targetRepoUrl
+                }
+            ) {
+                repoNeedsReset = true
+            }
+        
+            if (
+                currentRepos.any {
+                    it.url != targetRepoUrl
+                }
+            ) {
+                repoNeedsReset = true
+            }
+        
+            // ==================== FORCE RESET ====================
+            if (repoNeedsReset) {
+        
+                Log.d(
+                    TAG,
+                    "Repository mismatch detected"
+                )
+        
+                try {
+        
+                    // hapus semua repo lama
+                    currentRepos.forEach { repo ->
+                        RepositoryManager.removeRepository(
+                            this@MainActivity,
+                            repo
+                        )
+                    }
+        
+                    // bersihkan cache plugin
+                    PluginManager.deleteRepositoryData(
+                        this@MainActivity
+                    )
+        
+                    // delay kecil supaya datastore settle
+                    delay(500)
+        
+                    // parse repo baru
+                    val parsedRepo =
+                        RepositoryManager.parseRepository(
+                            targetRepoUrl
+                        )
+        
+                    if (parsedRepo != null) {
+        
+                        val repoData =
+                            RepositoryData(
+                                parsedRepo.iconUrl,
+                                parsedRepo.name,
+                                targetRepoUrl
+                            )
+        
+                        RepositoryManager.addRepository(
+                            repoData
+                        )
+        
+                        Log.d(
+                            TAG,
+                            "Repository switched successfully"
+                        )
+        
+                    } else {
+        
+                        Log.e(
+                            TAG,
+                            "Failed parsing repository"
+                        )
+                    }
+        
+                } catch (e: Exception) {
+        
+                    logError(e)
+                }
+            }
+
+    // ==================== AUTO RELOAD PLUGIN ====================
+    try {
+
+        PluginManager.loadAllOnlinePlugins(
+            this@MainActivity
+        )
+
+    } catch (e: Exception) {
+
+        logError(e)
+    }
+}
 
             // Gunakan delay dari coroutine, bukan Thread.sleep
             kotlinx.coroutines.delay(1000)
