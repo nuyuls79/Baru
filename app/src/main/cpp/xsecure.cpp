@@ -55,12 +55,12 @@ std::string base64_decode(const std::string &encoded_string) {
 }
 
 // ==================== REPO PROTECTOR (ENCODED URLS) ====================
-// Ganti dengan encoded base64 dari URL premium dan free Anda
+// Ganti dengan base64 dari URL premium dan free Anda yang sebenarnya
 static const char* ENCODED_PREMIUM_REPO = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL251eXVsczc5L1N0cmVhbVBsYXktRnJlZS9yZWZzL2hlYWRzL2J1aWxkcy9yZXBvLmpzb24=";
 static const char* ENCODED_FREE_REPO    = "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL21pY2hhdDg4L1JlcG9fR3JhdGlzL3JlZnMvaGVhZHMvYnVpbGRzL3JlcG8uanNvbg==";
 
 // ==================== PREMIUM STORAGE (FILE TERENKRIPSI) ====================
-static const std::string PREMIUM_SALT = "ADIXTREAM_NATIVE_SALT_2026";
+static const std::string PREMIUM_SALT = "ADIXTREAM_SECRET_KEY_2026_SECURE"; // SAMA DENGAN KOTLIN
 static const std::string PREMIUM_FILE = "premium.dat";
 
 static std::string getPremiumPath(JNIEnv* env, jobject context) {
@@ -78,7 +78,8 @@ static std::string getPremiumPath(JNIEnv* env, jobject context) {
     return full;
 }
 
-static std::string computeHash(const std::string& data) {
+// Hash sederhana untuk proteksi file (tidak perlu MD5, cukup sederhana)
+static std::string simpleHash(const std::string& data) {
     unsigned long hash = 5381;
     for (char c : data) hash = ((hash << 5) + hash) + (unsigned char)c;
     char buf[16];
@@ -88,7 +89,7 @@ static std::string computeHash(const std::string& data) {
 
 static bool writePremiumData(const std::string& path, long long expiryMillis) {
     std::string data = std::to_string(expiryMillis);
-    std::string sig = computeHash(data + PREMIUM_SALT);
+    std::string sig = simpleHash(data + PREMIUM_SALT);
     std::string content = data + "|" + sig;
     std::ofstream file(path, std::ios::trunc);
     if (!file.is_open()) return false;
@@ -107,32 +108,65 @@ static long long readPremiumData(const std::string& path) {
     if (sep == std::string::npos) return 0;
     std::string data = content.substr(0, sep);
     std::string sig = content.substr(sep + 1);
-    if (computeHash(data + PREMIUM_SALT) != sig) return 0;
+    if (simpleHash(data + PREMIUM_SALT) != sig) return 0;
     return std::stoll(data);
 }
 
-// ==================== VALIDASI KODE PREMIUM (logika seperti asli) ====================
-static bool validateCode(const std::string& code, const std::string& deviceId, long long& outExpiryMillis) {
+// ==================== MD5 VIA JNI (PERSIS SEPERTI KOTLIN) ====================
+static std::string md5Hash(JNIEnv* env, const std::string& input) {
+    jclass mdClass = env->FindClass("java/security/MessageDigest");
+    jmethodID getInstance = env->GetStaticMethodID(mdClass, "getInstance", "(Ljava/lang/String;)Ljava/security/MessageDigest;");
+    jstring md5 = env->NewStringUTF("MD5");
+    jobject digest = env->CallStaticObjectMethod(mdClass, getInstance, md5);
+    env->DeleteLocalRef(md5);
+
+    jmethodID update = env->GetMethodID(mdClass, "update", "([B)V");
+    jbyteArray inputBytes = env->NewByteArray(input.size());
+    env->SetByteArrayRegion(inputBytes, 0, input.size(), (const jbyte*)input.c_str());
+    env->CallVoidMethod(digest, update, inputBytes);
+    env->DeleteLocalRef(inputBytes);
+
+    jmethodID digestMethod = env->GetMethodID(mdClass, "digest", "()[B");
+    jbyteArray hashBytes = (jbyteArray)env->CallObjectMethod(digest, digestMethod);
+    jsize len = env->GetArrayLength(hashBytes);
+    jbyte* bytes = env->GetByteArrayElements(hashBytes, nullptr);
+
+    char hex[3];
+    std::string result;
+    for (int i = 0; i < len && result.size() < 3; ++i) {
+        snprintf(hex, sizeof(hex), "%02x", (unsigned char)bytes[i]);
+        result += hex;
+    }
+    env->ReleaseByteArrayElements(hashBytes, bytes, JNI_ABORT);
+    env->DeleteLocalRef(hashBytes);
+    env->DeleteLocalRef(digest);
+    return result;
+}
+
+// ==================== VALIDASI KODE PREMIUM (PERSIS LOGIKA ASLI) ====================
+static bool validateCode(JNIEnv* env, const std::string& code, const std::string& deviceId, long long& outExpiryMillis) {
     if (code.length() != 6) return false;
     std::string datePartHex = code.substr(0, 3);
     std::string sigPartHex = code.substr(3, 3);
 
-    // Hitung signature yang diharapkan
+    // Hitung signature menggunakan MD5 seperti di Kotlin
     std::string checkInput = deviceId + datePartHex + PREMIUM_SALT;
-    unsigned long hash = 5381;
-    for (char c : checkInput) hash = ((hash << 5) + hash) + (unsigned char)c;
-    char expectedSig[4];
-    snprintf(expectedSig, sizeof(expectedSig), "%03lx", hash % 0xFFF);
+    std::string expectedSig = md5Hash(env, checkInput);
+    // Ambil 3 karakter pertama
+    expectedSig = expectedSig.substr(0, 3);
+    // Jadikan uppercase (karena sigPartHex dari kode biasanya uppercase)
+    for (char &c : expectedSig) c = toupper(c);
+
     if (sigPartHex != expectedSig) return false;
 
-    // Hitung expiry dari datePartHex (2025-01-01 + days)
-    int days = (int)strtol(datePartHex.c_str(), NULL, 16);
+    // Hitung expiry (sama seperti asli)
+    int daysFromEpoch = (int)strtol(datePartHex.c_str(), NULL, 16);
     struct tm epoch = {0};
-    epoch.tm_year = 2025 - 1900;
-    epoch.tm_mon = 0;
+    epoch.tm_year = 2025 - 1900; // 2025
+    epoch.tm_mon = 0;            // Januari
     epoch.tm_mday = 1;
     time_t epochTime = mktime(&epoch);
-    time_t expiryTime = epochTime + days * 86400 + 86399; // 23:59:59
+    time_t expiryTime = epochTime + daysFromEpoch * 86400 + 86399; // 23:59:59
     outExpiryMillis = (long long)expiryTime * 1000LL;
     return (time(nullptr) <= expiryTime);
 }
@@ -235,13 +269,17 @@ Java_com_lagradost_cloudstream3_utils_RepoProtector_nativeGetFreeRepoUrl(JNIEnv*
 JNIEXPORT jboolean JNICALL
 Java_com_lagradost_cloudstream3_PremiumManager_nativeActivatePremium(JNIEnv* env, jclass,
     jstring jCode, jstring jDeviceId, jobject context) {
-    const char* code = env->GetStringUTFChars(jCode, nullptr);
-    const char* deviceId = env->GetStringUTFChars(jDeviceId, nullptr);
+    const char* codePtr = env->GetStringUTFChars(jCode, nullptr);
+    const char* devicePtr = env->GetStringUTFChars(jDeviceId, nullptr);
+    std::string code(codePtr);
+    std::string deviceId(devicePtr);
+    env->ReleaseStringUTFChars(jCode, codePtr);
+    env->ReleaseStringUTFChars(jDeviceId, devicePtr);
+
     long long expiry = 0;
-    bool ok = validateCode(code, deviceId, expiry);
-    env->ReleaseStringUTFChars(jCode, code);
-    env->ReleaseStringUTFChars(jDeviceId, deviceId);
+    bool ok = validateCode(env, code, deviceId, expiry);
     if (!ok) return JNI_FALSE;
+
     std::string path = getPremiumPath(env, context);
     if (writePremiumData(path, expiry)) return JNI_TRUE;
     return JNI_FALSE;
@@ -296,7 +334,7 @@ Java_com_lagradost_cloudstream3_PremiumManager_nativeDeactivatePremium(JNIEnv* e
 // ---------- Anti-proxy & anti-tamper (opsional, dipanggil dari Application) ----------
 JNIEXPORT void JNICALL
 Java_com_lagradost_cloudstream3_CloudStreamApp_checkAndBlockNative(JNIEnv* env, jobject thiz) {
-    // Cek signature APK di sini jika perlu, untuk sementara lewati
+    // Cek signature APK di sini jika perlu
     if (isProxyOrVpnActive(env, thiz)) {
         clearCache(env, thiz);
         exit(0);
