@@ -205,7 +205,6 @@ import java.nio.charset.Charset
 import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.system.exitProcess
-import kotlinx.coroutines.delay
 import com.lagradost.cloudstream3.utils.downloader.DownloadQueueManager
 
 // --- IMPORT TAMBAHAN ADIXTREAM ---
@@ -1078,130 +1077,82 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         setNavigationBarColorCompat(R.attr.primaryGrayBackground)
         updateLocale()
 
-        // --- LOGIKA REPOSITORY & UPDATE (ADIXTREAM STABLE FINAL) ---
+        // ================= ADIXTREAM PREMIUM REPOSITORY FINAL =================
         ioSafe {
         
-            val isPremiumUser =
-                PremiumManager.isPremium(this@MainActivity)
+            val isPremiumUser = PremiumManager.isPremium(this@MainActivity)
         
             val targetRepoUrl =
-                if (isPremiumUser) {
-                    PremiumManager.getPremiumRepoUrl()
-                } else {
-                    PremiumManager.getFreeRepoUrl()
+                if (isPremiumUser)
+                    PremiumManager.PREMIUM_REPO_URL
+                else
+                    PremiumManager.FREE_REPO_URL
+        
+            Log.d(TAG, "Premium Status = $isPremiumUser")
+            Log.d(TAG, "Target Repo = $targetRepoUrl")
+        
+            try {
+        
+                val currentRepos = RepositoryManager.getRepositories().toMutableList()
+        
+                // =========================================================
+                // HAPUS SEMUA REPO YANG TIDAK SESUAI
+                // =========================================================
+                currentRepos.forEach { repo ->
+        
+                    if (repo.url != targetRepoUrl) {
+        
+                        Log.d(TAG, "Menghapus repo lama: ${repo.url}")
+        
+                        try {
+                            RepositoryManager.removeRepository(
+                                this@MainActivity,
+                                repo
+                            )
+                        } catch (e: Exception) {
+                            logError(e)
+                        }
+                    }
                 }
         
-            Log.d(
-                TAG,
-                "Premium=$isPremiumUser"
-            )
+                kotlinx.coroutines.delay(500)
         
-            Log.d(
-                TAG,
-                "TargetRepo=$targetRepoUrl"
-            )
+                // =========================================================
+                // CEK ULANG SETELAH REMOVE
+                // =========================================================
+                val finalRepos = RepositoryManager.getRepositories()
         
-            val currentRepos =
-                RepositoryManager.getRepositories()
-        
-            var repoNeedsReset = false
-        
-            // ==================== VALIDASI REPO ====================
-            if (currentRepos.isEmpty()) {
-                repoNeedsReset = true
-            }
-        
-            if (
-                currentRepos.none {
+                val alreadyExists = finalRepos.any {
                     it.url == targetRepoUrl
                 }
-            ) {
-                repoNeedsReset = true
-            }
         
-            if (
-                currentRepos.any {
-                    it.url != targetRepoUrl
-                }
-            ) {
-                repoNeedsReset = true
-            }
+                // =========================================================
+                // TAMBAHKAN REPO JIKA BELUM ADA
+                // =========================================================
+                if (!alreadyExists) {
         
-            // ==================== FORCE RESET ====================
-            if (repoNeedsReset) {
+                    Log.d(TAG, "Menambahkan repo baru...")
         
-                Log.d(
-                    TAG,
-                    "Repository mismatch detected"
-                )
+                    try {
         
-                try {
+                        val parsedRepo =
+                            RepositoryManager.parseRepository(targetRepoUrl)
         
-                    // hapus semua repo lama
-                    currentRepos.forEach { repo ->
-                        RepositoryManager.removeRepository(
-                            this@MainActivity,
-                            repo
-                        )
-                    }
+                        if (parsedRepo != null) {
         
-                    // bersihkan cache plugin
-                    PluginManager.deleteRepositoryData(
-                        this@MainActivity
-                    )
-        
-                    // delay kecil supaya datastore settle
-                    delay(500)
-        
-                    // parse repo baru
-                    val parsedRepo =
-                        RepositoryManager.parseRepository(
-                            targetRepoUrl
-                        )
-        
-                    if (parsedRepo != null) {
-        
-                        val repoData =
-                            RepositoryData(
+                            val repoData = RepositoryData(
                                 parsedRepo.iconUrl,
                                 parsedRepo.name,
                                 targetRepoUrl
                             )
         
-                        RepositoryManager.addRepository(
-                            repoData
-                        )
+                            RepositoryManager.addRepository(repoData)
         
-                        Log.d(
-                            TAG,
-                            "Repository switched successfully"
-                        )
+                            Log.d(TAG, "Repo berhasil ditambahkan")
         
-                    } else {
-        
-                        Log.e(
-                            TAG,
-                            "Failed parsing repository"
-                        )
-                    }
-        
-                } catch (e: Exception) {
-        
-                    logError(e)
-                }
-            }
-
-        // ==================== AUTO RELOAD PLUGIN ====================
-        
-                    delay(1000)
-        
-                    if (lastError == null && !PluginManager.checkSafeModeFile()) {
-        
-                        if (repoNeedsReset) {
+                            kotlinx.coroutines.delay(1000)
         
                             try {
-        
-                                Log.d(TAG, "Mengunduh plugin dari Repo Baru...")
         
                                 PluginsViewModel.downloadAll(
                                     this@MainActivity,
@@ -1209,81 +1160,86 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                                     null
                                 )
         
-                                PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(
-                                    this@MainActivity
-                                )
-        
-                                PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(
-                                    this@MainActivity,
-                                    false
-                                )
-        
                             } catch (e: Exception) {
                                 logError(e)
                             }
-        
-                        } else {
-        
-                            if (
-                                settingsManager.getBoolean(
-                                    getString(R.string.auto_update_plugins_key),
-                                    true
-                                )
-                            ) {
-        
-                                try {
-        
-                                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_updateAllOnlinePluginsAndLoadThem(
-                                        this@MainActivity
-                                    )
-        
-                                } catch (e: Exception) {
-                                    logError(e)
-                                }
-        
-                            } else {
-        
-                                try {
-        
-                                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(
-                                        this@MainActivity
-                                    )
-        
-                                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(
-                                        this@MainActivity,
-                                        false
-                                    )
-        
-                                } catch (e: Exception) {
-                                    logError(e)
-                                }
-                            }
                         }
         
-                        val currentSelected =
-                            preferences.getString(
-                                getString(R.string.search_provider_pref),
-                                null
-                            )
-        
-                        if (currentSelected.isNullOrBlank()) {
-        
-                            mainPluginsLoadedEvent.invoke(false)
-        
-                        } else {
-        
-                            mainPluginsLoadedEvent.invoke(
-                                loadSinglePlugin(
-                                    this@MainActivity,
-                                    currentSelected
-                                )
-                            )
-        
-                            reloadHomeEvent.invoke(true)
-                        }
+                    } catch (e: Exception) {
+                        logError(e)
                     }
                 }
         
+                // =========================================================
+                // LOAD PLUGIN SESUAI REPO FINAL
+                // =========================================================
+                if (lastError == null &&
+                    !PluginManager.checkSafeModeFile()
+                ) {
+        
+                    try {
+        
+                        PluginManager
+                            .___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(
+                                this@MainActivity
+                            )
+        
+                        PluginManager
+                            .___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(
+                                this@MainActivity,
+                                false
+                            )
+        
+                    } catch (e: Exception) {
+                        logError(e)
+                    }
+                }
+        
+            } catch (e: Exception) {
+                logError(e)
+            }
+        }
+// ================================================================
+
+                // === SOLUSI FINAL: OPTIMASI POLLING COROUTINES & FILTER NSFW ===
+                val isAdultEnabled = settingsManager.getBoolean(getString(R.string.enable_nsfw_on_providers_key), false)
+
+                // Gunakan withTimeoutOrNull untuk membatasi waktu tunggu maksimal 15 detik (15000 ms)
+                kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                    // Cek terus setiap 500ms sampai ada setidaknya 1 provider valid
+                    while (APIHolder.allProviders.none { provider ->
+                        provider.hasMainPage && (isAdultEnabled || !provider.supportedTypes.contains(com.lagradost.cloudstream3.TvType.NSFW))
+                    }) {
+                        kotlinx.coroutines.delay(500)
+                    }
+                }
+
+                // Ambil daftar provider yang sudah terfilter dengan aman
+                val availableProviders = APIHolder.allProviders.filter { provider ->
+                    provider.hasMainPage && (isAdultEnabled || !provider.supportedTypes.contains(com.lagradost.cloudstream3.TvType.NSFW))
+                }
+
+                val currentSelected = DataStoreHelper.currentHomePage
+
+                // Jika daftar plugin sudah muncul, otomatis pilih urutan pertama
+                if (currentSelected == null || availableProviders.none { it.name == currentSelected }) {
+                    if (availableProviders.isNotEmpty()) {
+                        val targetApiToLoad = availableProviders.first().name
+                        DataStoreHelper.currentHomePage = targetApiToLoad
+                        Log.d(TAG, "Auto-select plugin sukses dieksekusi: $targetApiToLoad")
+                        mainPluginsLoadedEvent.invoke(loadSinglePlugin(this@MainActivity, targetApiToLoad))
+                        reloadHomeEvent.invoke(true)
+                    } else {
+                        mainPluginsLoadedEvent.invoke(false)
+                    }
+                } else {
+                    // Eksekusi jika tidak ada perubahan repo
+                    mainPluginsLoadedEvent.invoke(loadSinglePlugin(this@MainActivity, currentSelected))
+                    reloadHomeEvent.invoke(true)
+                }
+                // =========================================================
+            }
+        }
         // -----------------------------------------------------------
 
         try {
