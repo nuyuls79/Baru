@@ -1191,84 +1191,99 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 }
             }
 
-    // ==================== AUTO RELOAD PLUGIN ====================
-    try {
-
-        PluginManager.loadAllOnlinePlugins(
-            this@MainActivity
-        )
-
-    } catch (e: Exception) {
-
-        logError(e)
-    }
-}
-
-            // Gunakan delay dari coroutine, bukan Thread.sleep
-            kotlinx.coroutines.delay(1000)
-
-            if (lastError == null && !PluginManager.checkSafeModeFile()) {
-                if (isRepoChanged) {
-                    try {
-                        Log.d(TAG, "Mengunduh plugin dari Repo Baru...")
-                        // Download berjalan di background
-                        PluginsViewModel.downloadAll(this@MainActivity, targetRepoUrl, null)
-                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(this@MainActivity)
-                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(this@MainActivity, false)
-                    } catch (e: Exception) { logError(e) }
-                } else {
-                    if (settingsManager.getBoolean(getString(R.string.auto_update_plugins_key), true)) {
-                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_updateAllOnlinePluginsAndLoadThem(this@MainActivity)
-                    } else {
-                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(this@MainActivity)
+        // ==================== AUTO RELOAD PLUGIN ====================
+        
+                    delay(1000)
+        
+                    if (lastError == null && !PluginManager.checkSafeModeFile()) {
+        
+                        if (repoNeedsReset) {
+        
+                            try {
+        
+                                Log.d(TAG, "Mengunduh plugin dari Repo Baru...")
+        
+                                PluginsViewModel.downloadAll(
+                                    this@MainActivity,
+                                    targetRepoUrl,
+                                    null
+                                )
+        
+                                PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(
+                                    this@MainActivity
+                                )
+        
+                                PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(
+                                    this@MainActivity,
+                                    false
+                                )
+        
+                            } catch (e: Exception) {
+                                logError(e)
+                            }
+        
+                        } else {
+        
+                            if (
+                                settingsManager.getBoolean(
+                                    getString(R.string.auto_update_plugins_key),
+                                    true
+                                )
+                            ) {
+        
+                                try {
+        
+                                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_updateAllOnlinePluginsAndLoadThem(
+                                        this@MainActivity
+                                    )
+        
+                                } catch (e: Exception) {
+                                    logError(e)
+                                }
+        
+                            } else {
+        
+                                try {
+        
+                                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(
+                                        this@MainActivity
+                                    )
+        
+                                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(
+                                        this@MainActivity,
+                                        false
+                                    )
+        
+                                } catch (e: Exception) {
+                                    logError(e)
+                                }
+                            }
+                        }
+        
+                        val currentSelected =
+                            preferences.getString(
+                                getString(R.string.search_provider_pref),
+                                null
+                            )
+        
+                        if (currentSelected.isNullOrBlank()) {
+        
+                            mainPluginsLoadedEvent.invoke(false)
+        
+                        } else {
+        
+                            mainPluginsLoadedEvent.invoke(
+                                loadSinglePlugin(
+                                    this@MainActivity,
+                                    currentSelected
+                                )
+                            )
+        
+                            reloadHomeEvent.invoke(true)
+                        }
                     }
-
-                    val autoDownloadPlugin = AutoDownloadMode.getEnum(settingsManager.getInt(getString(R.string.auto_download_plugins_key), 0)) ?: AutoDownloadMode.Disable
-                    if (autoDownloadPlugin != AutoDownloadMode.Disable) {
-                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_downloadNotExistingPluginsAndLoad(this@MainActivity, autoDownloadPlugin)
-                    }
-                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(this@MainActivity, false)
                 }
-
-                // === SOLUSI FINAL: OPTIMASI POLLING COROUTINES & FILTER NSFW ===
-                val isAdultEnabled = settingsManager.getBoolean(getString(R.string.enable_nsfw_on_providers_key), false)
-
-                // Gunakan withTimeoutOrNull untuk membatasi waktu tunggu maksimal 15 detik (15000 ms)
-                kotlinx.coroutines.withTimeoutOrNull(15_000L) {
-                    // Cek terus setiap 500ms sampai ada setidaknya 1 provider valid
-                    while (APIHolder.allProviders.none { provider ->
-                        provider.hasMainPage && (isAdultEnabled || !provider.supportedTypes.contains(com.lagradost.cloudstream3.TvType.NSFW))
-                    }) {
-                        kotlinx.coroutines.delay(500)
-                    }
-                }
-
-                // Ambil daftar provider yang sudah terfilter dengan aman
-                val availableProviders = APIHolder.allProviders.filter { provider ->
-                    provider.hasMainPage && (isAdultEnabled || !provider.supportedTypes.contains(com.lagradost.cloudstream3.TvType.NSFW))
-                }
-
-                val currentSelected = DataStoreHelper.currentHomePage
-
-                // Jika daftar plugin sudah muncul, otomatis pilih urutan pertama
-                if (currentSelected == null || availableProviders.none { it.name == currentSelected }) {
-                    if (availableProviders.isNotEmpty()) {
-                        val targetApiToLoad = availableProviders.first().name
-                        DataStoreHelper.currentHomePage = targetApiToLoad
-                        Log.d(TAG, "Auto-select plugin sukses dieksekusi: $targetApiToLoad")
-                        mainPluginsLoadedEvent.invoke(loadSinglePlugin(this@MainActivity, targetApiToLoad))
-                        reloadHomeEvent.invoke(true)
-                    } else {
-                        mainPluginsLoadedEvent.invoke(false)
-                    }
-                } else {
-                    // Eksekusi jika tidak ada perubahan repo
-                    mainPluginsLoadedEvent.invoke(loadSinglePlugin(this@MainActivity, currentSelected))
-                    reloadHomeEvent.invoke(true)
-                }
-                // =========================================================
-            }
-        }
+        
         // -----------------------------------------------------------
 
         try {
