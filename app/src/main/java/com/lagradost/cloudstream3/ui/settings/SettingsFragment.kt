@@ -232,7 +232,7 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
 
                     // Tentukan Nama Repo & URL berdasarkan status
                     val repoName = if (isPremium) "Repository Premium" else "Repository Gratis"
-                    val repoUrl = if (isPremium) PremiumManager.PREMIUM_REPO_URL else PremiumManager.FREE_REPO_URL
+                    val repoUrl = if (isPremium) PremiumManager.getPremiumRepoUrl() else PremiumManager.getFreeRepoUrl()
 
                     // Masukkan ke Bundle
                     bundle.putString("name", repoName)
