@@ -4,6 +4,7 @@ import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import java.util.Base64   // <-- TAMBAHKAN INI
 
 plugins {
     alias(libs.plugins.android.application)
@@ -140,6 +141,24 @@ android {
 
         val localProperties = gradleLocalProperties(rootDir, project.providers)
 
+        // ========== HEX + XOR ENCRYPTION (ANTI-HTTPCANARY) ==========
+        val xorSecretKey = (localProperties.getProperty("XOR_SECRET_KEY") 
+            ?: System.getenv("XOR_SECRET_KEY") ?: "DefaultKeyAman").trim()
+
+        val premiumRepo = (localProperties.getProperty("PREMIUM_REPO") 
+            ?: System.getenv("PREMIUM_REPO") ?: "").trim()
+        val freeRepo = (localProperties.getProperty("FREE_REPO") 
+            ?: System.getenv("FREE_REPO") ?: "").trim()
+
+        // Pecah kunci jadi array angka (char + 7)
+        val obfuscatedKeyArray = xorSecretKey.map { it.code + 7 }.joinToString(", ")
+        buildConfigField("int[]", "OBFUSCATED_KEY", "new int[]{$obfuscatedKeyArray}")
+
+        // Enkripsi URL dengan XOR + Base64 + Hex
+        buildConfigField("String", "PREMIUM_REPO_XOR", "\"${xorEncrypt(premiumRepo, xorSecretKey)}\"")
+        buildConfigField("String", "FREE_REPO_XOR", "\"${xorEncrypt(freeRepo, xorSecretKey)}\"")
+        // =============================================================
+
         buildConfigField("long", "BUILD_DATE", "${System.currentTimeMillis()}")
         buildConfigField("String", "APP_VERSION", "\"$versionName\"")
         
@@ -148,13 +167,18 @@ android {
         buildConfigField("String", "SIMKL_CLIENT_SECRET", "\"d8cf8e1b79bae9b2f77f0347d6384a62f1a8d802abdd73d9aa52bf6a848532ba\"")
         
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // --- NDK ABIs ---
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+        }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
             isDebuggable = false
-            isMinifyEnabled = false 
+            isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -196,7 +220,16 @@ android {
         resValues = true
     }
 
-    // [TAMBAHAN OPTIMASI 2]: Mengaktifkan kompresi lama untuk file JNI (.so) agar ukuran APK jauh lebih kecil
+    // ==================== NATIVE BUILD (XSECURE) ====================
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+    ndkVersion = "27.0.12077973"
+    // ================================================================
+
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -297,7 +330,6 @@ tasks.withType<KotlinJvmCompile> {
     compilerOptions {
         jvmTarget.set(javaTarget)
         jvmDefault.set(JvmDefaultMode.ENABLE)
-        // [MODIFIKASI: Menambahkan InternalAPI sesuai commit 86cca03]
         optIn.addAll(
             "com.lagradost.cloudstream3.InternalAPI",
             "com.lagradost.cloudstream3.Prerelease"
@@ -322,4 +354,24 @@ dokka {
             }
         }
     }
+}
+
+// ========== FUNGSI XOR + BASE64 + HEX ==========
+fun xorEncrypt(input: String, keyString: String): String {
+    if (input.isEmpty() || keyString.isEmpty()) return ""
+    
+    // 1. Encode URL ke Base64
+    val base64String = Base64.getEncoder().encodeToString(input.toByteArray(Charsets.UTF_8))
+    
+    // 2. XOR dengan kunci
+    val key = keyString.toByteArray(Charsets.UTF_8)
+    val inputBytes = base64String.toByteArray(Charsets.UTF_8)
+    val outputBytes = ByteArray(inputBytes.size)
+    
+    for (i in inputBytes.indices) {
+        outputBytes[i] = (inputBytes[i].toInt() xor key[i % key.size].toInt()).toByte()
+    }
+    
+    // 3. Konversi ke hex
+    return outputBytes.joinToString("") { "%02x".format(it) }
 }
