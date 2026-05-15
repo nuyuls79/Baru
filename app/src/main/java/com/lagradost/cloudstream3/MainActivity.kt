@@ -1077,129 +1077,58 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         setNavigationBarColorCompat(R.attr.primaryGrayBackground)
         updateLocale()
 
-        // ================= ADIXTREAM PREMIUM REPOSITORY FINAL =================
+        // --- LOGIKA REPOSITORY & UPDATE (ADIXTREAM ANTI-BUG V4 - POLLING SYSTEM) ---
         ioSafe {
-        
-            val isPremiumUser = PremiumManager.isPremium(this@MainActivity)
-        
-            val targetRepoUrl =
-                if (isPremiumUser)
-                    PremiumManager.PREMIUM_REPO_URL
-                else
-                    PremiumManager.FREE_REPO_URL
-        
-            Log.d(TAG, "Premium Status = $isPremiumUser")
-            Log.d(TAG, "Target Repo = $targetRepoUrl")
-        
-            try {
-        
-                val currentRepos = RepositoryManager.getRepositories().toMutableList()
-        
-                // =========================================================
-                // HAPUS SEMUA REPO YANG TIDAK SESUAI
-                // =========================================================
+            val isPremium = PremiumManager.isPremium(this@MainActivity)
+            val targetRepoUrl = if (isPremium) PremiumManager.PREMIUM_REPO_URL else PremiumManager.FREE_REPO_URL
+
+            val currentRepos = RepositoryManager.getRepositories()
+            val hasTargetRepo = currentRepos.any { it.url == targetRepoUrl }
+            val hasInvalidRepos = currentRepos.any { it.url != targetRepoUrl }
+
+            var isRepoChanged = false
+
+            if (!hasTargetRepo || hasInvalidRepos) {
+                Log.d(TAG, "Status Repo tidak sinkron. Melakukan penyesuaian otomatis...")
                 currentRepos.forEach { repo ->
-        
-                    if (repo.url != targetRepoUrl) {
-        
-                        Log.d(TAG, "Menghapus repo lama: ${repo.url}")
-        
-                        try {
-                            RepositoryManager.removeRepository(
-                                this@MainActivity,
-                                repo
-                            )
-                        } catch (e: Exception) {
-                            logError(e)
-                        }
+                    RepositoryManager.removeRepository(this@MainActivity, repo)
+                }
+                try {
+                    val parsedRepo = RepositoryManager.parseRepository(targetRepoUrl)
+                    if (parsedRepo != null) {
+                        val repoData = RepositoryData(parsedRepo.iconUrl, parsedRepo.name, targetRepoUrl)
+                        RepositoryManager.addRepository(repoData)
+                        isRepoChanged = true
+                        Log.d(TAG, "Repo berhasil disinkronkan ke: $targetRepoUrl")
                     }
-                }
-        
-                kotlinx.coroutines.delay(500)
-        
-                // =========================================================
-                // CEK ULANG SETELAH REMOVE
-                // =========================================================
-                val finalRepos = RepositoryManager.getRepositories()
-        
-                val alreadyExists = finalRepos.any {
-                    it.url == targetRepoUrl
-                }
-        
-                // =========================================================
-                // TAMBAHKAN REPO JIKA BELUM ADA
-                // =========================================================
-                if (!alreadyExists) {
-        
-                    Log.d(TAG, "Menambahkan repo baru...")
-        
-                    try {
-        
-                        val parsedRepo =
-                            RepositoryManager.parseRepository(targetRepoUrl)
-        
-                        if (parsedRepo != null) {
-        
-                            val repoData = RepositoryData(
-                                parsedRepo.iconUrl,
-                                parsedRepo.name,
-                                targetRepoUrl
-                            )
-        
-                            RepositoryManager.addRepository(repoData)
-        
-                            Log.d(TAG, "Repo berhasil ditambahkan")
-        
-                            kotlinx.coroutines.delay(1000)
-        
-                            try {
-        
-                                PluginsViewModel.downloadAll(
-                                    this@MainActivity,
-                                    targetRepoUrl,
-                                    null
-                                )
-        
-                            } catch (e: Exception) {
-                                logError(e)
-                            }
-                        }
-        
-                    } catch (e: Exception) {
-                        logError(e)
-                    }
-                }
-        
-                // =========================================================
-                // LOAD PLUGIN SESUAI REPO FINAL
-                // =========================================================
-                if (lastError == null &&
-                    !PluginManager.checkSafeModeFile()
-                ) {
-        
-                    try {
-        
-                        PluginManager
-                            .___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(
-                                this@MainActivity
-                            )
-        
-                        PluginManager
-                            .___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(
-                                this@MainActivity,
-                                false
-                            )
-        
-                    } catch (e: Exception) {
-                        logError(e)
-                    }
-                }
-        
-            } catch (e: Exception) {
-                logError(e)
+                } catch (e: Exception) { logError(e) }
             }
-        }
-// ================================================================
+
+            // Gunakan delay dari coroutine, bukan Thread.sleep
+            kotlinx.coroutines.delay(1000)
+
+            if (lastError == null && !PluginManager.checkSafeModeFile()) {
+                if (isRepoChanged) {
+                    try {
+                        Log.d(TAG, "Mengunduh plugin dari Repo Baru...")
+                        // Download berjalan di background
+                        PluginsViewModel.downloadAll(this@MainActivity, targetRepoUrl, null)
+                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(this@MainActivity)
+                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(this@MainActivity, false)
+                    } catch (e: Exception) { logError(e) }
+                } else {
+                    if (settingsManager.getBoolean(getString(R.string.auto_update_plugins_key), true)) {
+                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_updateAllOnlinePluginsAndLoadThem(this@MainActivity)
+                    } else {
+                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllOnlinePlugins(this@MainActivity)
+                    }
+
+                    val autoDownloadPlugin = AutoDownloadMode.getEnum(settingsManager.getInt(getString(R.string.auto_download_plugins_key), 0)) ?: AutoDownloadMode.Disable
+                    if (autoDownloadPlugin != AutoDownloadMode.Disable) {
+                        PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_downloadNotExistingPluginsAndLoad(this@MainActivity, autoDownloadPlugin)
+                    }
+                    PluginManager.___DO_NOT_CALL_FROM_A_PLUGIN_loadAllLocalPlugins(this@MainActivity, false)
+                }
 
                 // === SOLUSI FINAL: OPTIMASI POLLING COROUTINES & FILTER NSFW ===
                 val isAdultEnabled = settingsManager.getBoolean(getString(R.string.enable_nsfw_on_providers_key), false)
