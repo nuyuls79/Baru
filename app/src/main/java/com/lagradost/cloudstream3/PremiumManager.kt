@@ -15,13 +15,17 @@ object PremiumManager {
     private const val PREF_IS_PREMIUM = "is_premium_user"
     private const val PREF_EXPIRY_DATE = "premium_expiry_date"
 
-    private const val SALT = "ADIXTREAM_SECRET_KEY_2026_SECURE"
+    private const val SALT =
+        "ADIXTREAM_SECRET_KEY_2026_SECURE"
+
     private const val EPOCH_YEAR = 2025
 
+    // ==================== NATIVE ====================
     external fun nativeGetPremiumRepoUrl(): String
     external fun nativeGetFreeRepoUrl(): String
     external fun nativeIsPremium(context: Context): Boolean
 
+    // ==================== REPO ====================
     fun getPremiumRepoUrl(): String {
         return nativeGetPremiumRepoUrl()
     }
@@ -30,34 +34,45 @@ object PremiumManager {
         return nativeGetFreeRepoUrl()
     }
 
+    // ==================== PREFS ====================
     private fun getPrefs(context: Context) =
         PreferenceManager.getDefaultSharedPreferences(context)
 
+    // ==================== DEVICE ID ====================
     fun getDeviceId(context: Context): String {
-        val androidId = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ANDROID_ID
-        ) ?: "00000000"
 
-        return kotlin.math.abs(androidId.hashCode())
-            .toString()
-            .take(8)
+        val androidId =
+            Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ANDROID_ID
+            ) ?: "00000000"
+
+        return kotlin.math.abs(
+            androidId.hashCode()
+        ).toString().take(8)
     }
 
+    // ==================== ACTIVATE ====================
     fun activatePremiumWithCode(
         context: Context,
         code: String,
         deviceId: String
     ): Boolean {
 
-        if (code.length != 6) return false
+        if (code.length != 6) {
+            return false
+        }
 
         return try {
 
-            val inputCode = code.uppercase()
+            val inputCode =
+                code.uppercase()
 
-            val datePartHex = inputCode.substring(0, 3)
-            val sigPartHex = inputCode.substring(3, 6)
+            val datePartHex =
+                inputCode.substring(0, 3)
+
+            val sigPartHex =
+                inputCode.substring(3, 6)
 
             val checkInput =
                 "$deviceId$datePartHex$SALT"
@@ -66,7 +81,11 @@ object PremiumManager {
                 MessageDigest.getInstance("MD5")
 
             val digest =
-                md.digest(checkInput.toByteArray(Charsets.UTF_8))
+                md.digest(
+                    checkInput.toByteArray(
+                        Charsets.UTF_8
+                    )
+                )
 
             val expectedSig =
                 digest.joinToString("") {
@@ -107,50 +126,123 @@ object PremiumManager {
             val expiryTime =
                 expiryCal.timeInMillis
 
-            if (System.currentTimeMillis() > expiryTime) {
+            if (
+                System.currentTimeMillis() >
+                expiryTime
+            ) {
                 return false
             }
 
-            getPrefs(context).edit().apply {
+            // ==================== SAVE ====================
+            getPrefs(context)
+                .edit()
+                .apply {
 
-                putBoolean(PREF_IS_PREMIUM, true)
+                    putBoolean(
+                        PREF_IS_PREMIUM,
+                        true
+                    )
 
-                putLong(
-                    PREF_EXPIRY_DATE,
-                    expiryTime
-                )
+                    putLong(
+                        PREF_EXPIRY_DATE,
+                        expiryTime
+                    )
 
-                apply()
-            }
+                    apply()
+                }
 
             true
 
         } catch (e: Exception) {
+
             false
         }
     }
 
-    fun isPremium(context: Context): Boolean {
-        return nativeIsPremium(context)
-    }
+    // ==================== LOCAL CHECK ====================
+    private fun isPremiumLocal(
+        context: Context
+    ): Boolean {
 
-    fun deactivatePremium(context: Context) {
+        return try {
 
-        getPrefs(context).edit().apply {
+            val prefs =
+                getPrefs(context)
 
-            putBoolean(PREF_IS_PREMIUM, false)
+            val expiry =
+                prefs.getLong(
+                    PREF_EXPIRY_DATE,
+                    0
+                )
 
-            putLong(PREF_EXPIRY_DATE, 0)
+            val enabled =
+                prefs.getBoolean(
+                    PREF_IS_PREMIUM,
+                    false
+                )
 
-            apply()
+            enabled &&
+            expiry > System.currentTimeMillis()
+
+        } catch (e: Exception) {
+
+            false
         }
     }
 
-    fun getExpiryDateString(context: Context): String {
+    // ==================== MAIN PREMIUM CHECK ====================
+    fun isPremium(context: Context): Boolean {
+
+        // local prefs prioritas utama
+        if (isPremiumLocal(context)) {
+            return true
+        }
+
+        // fallback native anti-patch
+        return try {
+
+            nativeIsPremium(context)
+
+        } catch (e: Exception) {
+
+            false
+        }
+    }
+
+    // ==================== DEACTIVATE ====================
+    fun deactivatePremium(
+        context: Context
+    ) {
+
+        getPrefs(context)
+            .edit()
+            .apply {
+
+                putBoolean(
+                    PREF_IS_PREMIUM,
+                    false
+                )
+
+                putLong(
+                    PREF_EXPIRY_DATE,
+                    0
+                )
+
+                apply()
+            }
+    }
+
+    // ==================== EXPIRY STRING ====================
+    fun getExpiryDateString(
+        context: Context
+    ): String {
 
         val date =
             getPrefs(context)
-                .getLong(PREF_EXPIRY_DATE, 0)
+                .getLong(
+                    PREF_EXPIRY_DATE,
+                    0
+                )
 
         return if (date == 0L) {
 
@@ -161,13 +253,21 @@ object PremiumManager {
             java.text.SimpleDateFormat(
                 "dd MMM yyyy",
                 java.util.Locale.getDefault()
-            ).format(java.util.Date(date))
+            ).format(
+                java.util.Date(date)
+            )
         }
     }
 
-    fun getExpiryDateMillis(context: Context): Long {
+    // ==================== EXPIRY MILLIS ====================
+    fun getExpiryDateMillis(
+        context: Context
+    ): Long {
 
         return getPrefs(context)
-            .getLong(PREF_EXPIRY_DATE, 0)
+            .getLong(
+                PREF_EXPIRY_DATE,
+                0
+            )
     }
 }
