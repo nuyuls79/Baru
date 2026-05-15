@@ -1,15 +1,21 @@
 package com.lagradost.cloudstream3.ui.settings
 
+import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
-import android.text.format.Formatter
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
 import androidx.core.view.children
 import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.Fragment
@@ -50,12 +56,9 @@ import java.util.TimeZone
 class SettingsFragment : BaseFragment<MainSettingsBinding>(
     BaseFragment.BindingCreator.Inflate(MainSettingsBinding::inflate)
 ) {
-
     companion object {
-
         fun PreferenceFragmentCompat?.getPref(id: Int): Preference? {
             if (this == null) return null
-
             return try {
                 findPreference(getString(id))
             } catch (e: Exception) {
@@ -64,100 +67,54 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
             }
         }
 
-        fun PreferenceFragmentCompat?.hidePrefs(
-            ids: List<Int>,
-            layoutFlags: Int
-        ) {
-
+        fun PreferenceFragmentCompat?.hidePrefs(ids: List<Int>, layoutFlags: Int) {
             if (this == null) return
-
             try {
-
                 ids.forEach {
-                    getPref(it)?.isVisible =
-                        !isLayout(layoutFlags)
+                    getPref(it)?.isVisible = !isLayout(layoutFlags)
                 }
-
             } catch (e: Exception) {
                 logError(e)
             }
         }
 
-        fun Preference?.hideOn(
-            layoutFlags: Int
-        ): Preference? {
-
+        fun Preference?.hideOn(layoutFlags: Int): Preference? {
             if (this == null) return null
-
-            isVisible = !isLayout(layoutFlags)
-
-            return if (isVisible) this else null
+            this.isVisible = !isLayout(layoutFlags)
+            return if(this.isVisible) this else null
         }
 
         fun PreferenceFragmentCompat.setPaddingBottom() {
-
             if (isLayout(TV or EMULATOR)) {
-
-                listView?.setPadding(
-                    0,
-                    0,
-                    0,
-                    100.toPx
-                )
+                listView?.setPadding(0, 0, 0, 100.toPx)
             }
         }
 
         fun PreferenceFragmentCompat.setToolBarScrollFlags() {
-
             if (isLayout(TV or EMULATOR)) {
-
-                val toolbar =
-                    view?.findViewById<MaterialToolbar>(
-                        R.id.settings_toolbar
-                    )
-
-                toolbar?.updateLayoutParams<AppBarLayout.LayoutParams> {
-                    scrollFlags =
-                        AppBarLayout.LayoutParams.SCROLL_FLAG_NO_SCROLL
+                val settingsAppbar = view?.findViewById<MaterialToolbar>(R.id.settings_toolbar)
+                settingsAppbar?.updateLayoutParams<AppBarLayout.LayoutParams> {
+                    scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_NO_SCROLL
                 }
             }
         }
 
         fun Fragment?.setToolBarScrollFlags() {
-
             if (isLayout(TV or EMULATOR)) {
-
-                val toolbar =
-                    this?.view?.findViewById<MaterialToolbar>(
-                        R.id.settings_toolbar
-                    )
-
-                toolbar?.updateLayoutParams<AppBarLayout.LayoutParams> {
-                    scrollFlags =
-                        AppBarLayout.LayoutParams.SCROLL_FLAG_NO_SCROLL
+                val settingsAppbar = this?.view?.findViewById<MaterialToolbar>(R.id.settings_toolbar)
+                settingsAppbar?.updateLayoutParams<AppBarLayout.LayoutParams> {
+                    scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_NO_SCROLL
                 }
             }
         }
 
         fun Fragment?.setUpToolbar(title: String) {
-
             if (this == null) return
-
-            val toolbar =
-                view?.findViewById<MaterialToolbar>(
-                    R.id.settings_toolbar
-                ) ?: return
-
-            toolbar.apply {
-
+            val settingsToolbar = view?.findViewById<MaterialToolbar>(R.id.settings_toolbar) ?: return
+            settingsToolbar.apply {
                 setTitle(title)
-
                 if (isLayout(PHONE or EMULATOR)) {
-
-                    setNavigationIcon(
-                        R.drawable.ic_baseline_arrow_back_24
-                    )
-
+                    setNavigationIcon(R.drawable.ic_baseline_arrow_back_24)
                     setNavigationOnClickListener {
                         activity?.onBackPressedDispatcher?.onBackPressed()
                     }
@@ -165,45 +122,23 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
             }
         }
 
-        fun Fragment?.setUpToolbar(
-            @StringRes title: Int
-        ) {
-
+        fun Fragment?.setUpToolbar(@StringRes title: Int) {
             if (this == null) return
-
-            val toolbar =
-                view?.findViewById<MaterialToolbar>(
-                    R.id.settings_toolbar
-                ) ?: return
-
-            toolbar.apply {
-
+            val settingsToolbar = view?.findViewById<MaterialToolbar>(R.id.settings_toolbar) ?: return
+            settingsToolbar.apply {
                 setTitle(title)
-
                 if (isLayout(PHONE or EMULATOR)) {
-
-                    setNavigationIcon(
-                        R.drawable.ic_baseline_arrow_back_24
-                    )
-
-                    children.firstOrNull {
-                        it is ImageView
-                    }?.tag =
-                        getString(R.string.tv_no_focus_tag)
-
+                    setNavigationIcon(R.drawable.ic_baseline_arrow_back_24)
+                    children.firstOrNull { it is ImageView }?.tag = getString(R.string.tv_no_focus_tag)
                     setNavigationOnClickListener {
-                        safe {
-                            activity?.onBackPressedDispatcher?.onBackPressed()
-                        }
+                        safe { activity?.onBackPressedDispatcher?.onBackPressed() }
                     }
                 }
             }
         }
 
         fun Fragment.setSystemBarsPadding() {
-
             view?.let {
-
                 fixSystemBarsPadding(
                     it,
                     padLeft = isLayout(TV or EMULATOR),
@@ -213,337 +148,183 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
         }
 
         fun getFolderSize(dir: File): Long {
-
             var size: Long = 0
-
-            dir.listFiles()?.forEach { file ->
-
-                size += if (file.isFile) {
-                    file.length()
-                } else {
-                    getFolderSize(file)
+            dir.listFiles()?.let {
+                for (file in it) {
+                    size += if (file.isFile) file.length() else getFolderSize(file)
                 }
             }
-
             return size
         }
     }
 
     override fun fixLayout(view: View) {
-
         fixSystemBarsPadding(
             view,
             padBottom = isLandscape(),
             padLeft = isLayout(TV or EMULATOR)
         )
     }
-
-    private fun updateExtensionVisibility(
-        binding: MainSettingsBinding
-    ) {
-
+        
+    /**
+     * Mengatur visibilitas Extensions
+     */
+    private fun updateExtensionVisibility(binding: MainSettingsBinding) {
         try {
-
-            val premium =
-                PremiumManager.isPremium(
-                    requireContext()
-                )
-
+            val isPremium = PremiumManager.isPremium(requireContext())
+    
             binding.settingsExtensions.visibility =
-                if (premium) {
-                    View.VISIBLE
-                } else {
-                    View.VISIBLE
-                }
-
+                if (isPremium) View.GONE else View.VISIBLE
+    
         } catch (e: Exception) {
             logError(e)
         }
     }
 
-    override fun onBindingCreated(
-        binding: MainSettingsBinding
-    ) {
-
+    override fun onBindingCreated(binding: MainSettingsBinding) {
         fun navigate(id: Int) {
             activity?.navigate(id, Bundle())
         }
 
-        fun hasProfilePictureFromAccountManagers(
-            accountManagers: Array<AuthRepo>
-        ): Boolean {
-
+        fun hasProfilePictureFromAccountManagers(accountManagers: Array<AuthRepo>): Boolean {
             for (syncApi in accountManagers) {
-
                 val login = syncApi.authUser()
-
-                val pic =
-                    login?.profilePicture ?: continue
-
+                val pic = login?.profilePicture ?: continue
                 binding.settingsProfilePic.let { imageView ->
-
                     imageView.loadImage(pic) {
-
-                        error {
-                            getImageFromDrawable(
-                                context ?: return@error null,
-                                errorProfilePic
-                            )
-                        }
+                        error { getImageFromDrawable(context ?: return@error null, errorProfilePic) }
                     }
                 }
-
-                binding.settingsProfileText.text =
-                    login.name
-
-                return true
+                binding.settingsProfileText.text = login.name
+                return true 
             }
-
-            return false
+            return false 
         }
 
-        if (!hasProfilePictureFromAccountManagers(
-                AccountManager.allApis
-            )
-        ) {
-
+        if (!hasProfilePictureFromAccountManagers(AccountManager.allApis)) {
             val activity = activity ?: return
-
             val currentAccount = try {
-
                 DataStoreHelper.accounts.firstOrNull {
-                    it.keyIndex ==
-                            DataStoreHelper.selectedKeyIndex
-                } ?: DataStoreHelper.getDefaultAccount(
-                    activity
-                )
-
+                    it.keyIndex == DataStoreHelper.selectedKeyIndex
+                } ?: activity.let { DataStoreHelper.getDefaultAccount(activity) }
             } catch (t: IllegalStateException) {
-
-                Log.e(
-                    "AccountManager",
-                    "Activity not found",
-                    t
-                )
-
+                Log.e("AccountManager", "Activity not found", t)
                 null
             }
-
-            binding.settingsProfilePic.loadImage(
-                currentAccount?.image
-            )
-
-            binding.settingsProfileText.text =
-                currentAccount?.name
+            binding.settingsProfilePic.loadImage(currentAccount?.image)
+            binding.settingsProfileText.text = currentAccount?.name
         }
 
         binding.apply {
 
+            // Refresh status premium Extensions
             updateExtensionVisibility(binding)
+   
 
+            // --- 1. MODIFIKASI ADIXTREAM: BYPASS MASUK LANGSUNG KE PLUGINS ---
             settingsExtensions.setOnClickListener {
-
                 try {
-
                     val bundle = Bundle()
+                    val context = requireContext()
 
-                    val isPremium =
-                        PremiumManager.isPremium(
-                            requireContext()
-                        )
+                    // Cek Status Premium User
+                    val isPremium = PremiumManager.isPremium(context)
 
-                    val repoName =
-                        if (isPremium) {
-                            "Repository Premium"
-                        } else {
-                            "Repository Gratis"
-                        }
+                    // Tentukan Nama Repo & URL berdasarkan status
+                    val repoName = if (isPremium) "Repository Premium" else "Repository Gratis"
+                    val repoUrl = if (isPremium) PremiumManager.PREMIUM_REPO_URL else PremiumManager.FREE_REPO_URL
 
-                    val repoUrl =
-                        if (isPremium) {
-                            PremiumManager.PREMIUM_REPO_URL
-                        } else {
-                            PremiumManager.FREE_REPO_URL
-                        }
+                    // Masukkan ke Bundle
+                    bundle.putString("name", repoName)
+                    bundle.putString("url", repoUrl)
+                    bundle.putBoolean("isLocal", false)
 
-                    bundle.putString(
-                        "name",
-                        repoName
-                    )
-
-                    bundle.putString(
-                        "url",
-                        repoUrl
-                    )
-
-                    bundle.putBoolean(
-                        "isLocal",
-                        false
-                    )
-
-                    activity?.navigate(
-                        R.id.navigation_settings_plugins,
-                        bundle
-                    )
-
+                    // Navigasi langsung ke PluginsFragment (melewati Extensions)
+                    activity?.navigate(R.id.navigation_settings_plugins, bundle)
                 } catch (e: Exception) {
                     logError(e)
                 }
             }
+            // --------------------------------------------------------
 
+
+            // --- 3. DAFTAR MENU LAINNYA ---
             listOf(
-
-                settingsGeneral to
-                        R.id.action_navigation_global_to_navigation_settings_general,
-
-                settingsPlayer to
-                        R.id.action_navigation_global_to_navigation_settings_player,
-
-                settingsCredits to
-                        R.id.action_navigation_global_to_navigation_settings_account,
-
-                settingsUi to
-                        R.id.action_navigation_global_to_navigation_settings_ui,
-
-                settingsProviders to
-                        R.id.action_navigation_global_to_navigation_settings_providers,
-
-                settingsUpdates to
-                        R.id.action_navigation_global_to_navigation_settings_updates,
-
+                settingsGeneral to R.id.action_navigation_global_to_navigation_settings_general,
+                settingsPlayer to R.id.action_navigation_global_to_navigation_settings_player,
+                settingsCredits to R.id.action_navigation_global_to_navigation_settings_account,
+                settingsUi to R.id.action_navigation_global_to_navigation_settings_ui,
+                settingsProviders to R.id.action_navigation_global_to_navigation_settings_providers,
+                settingsUpdates to R.id.action_navigation_global_to_navigation_settings_updates,
             ).forEach { (view, navigationId) ->
-
                 view.apply {
-
                     setOnClickListener {
                         navigate(navigationId)
                     }
-
                     if (isLayout(TV)) {
-
                         isFocusable = true
                         isFocusableInTouchMode = true
                     }
                 }
             }
 
+            // Default focus on TV
             if (isLayout(TV)) {
                 settingsGeneral.requestFocus()
             }
         }
 
-        val appVersion =
-            BuildConfig.APP_VERSION
-
-        val commitInfo =
-            getString(R.string.commit_hash)
-
-        val buildTimestamp =
-            SimpleDateFormat.getDateTimeInstance(
-                DateFormat.LONG,
-                DateFormat.LONG,
-                Locale.getDefault()
-            ).apply {
-
-                timeZone =
-                    TimeZone.getTimeZone("UTC")
-
-            }.format(
-                Date(BuildConfig.BUILD_DATE)
-            ).replace(
-                "UTC",
-                ""
-            )
-
-        binding.appVersion.text =
-            appVersion
-
-        binding.buildDate.text =
-            buildTimestamp
-
-        if (binding.root.findViewWithTag<View>(
-                "premium_status_tag"
-            ) == null
-        ) {
-
-            var parentLayout =
-                binding.buildDate.parent as? ViewGroup
-
-            if (parentLayout is android.widget.LinearLayout &&
-                parentLayout.orientation ==
-                android.widget.LinearLayout.HORIZONTAL
-            ) {
-
-                parentLayout =
-                    parentLayout.parent as? ViewGroup
+        // Menggunakan APP_VERSION milik AdiXtream (sesuai build.gradle)
+        val appVersion = BuildConfig.APP_VERSION
+        val commitInfo = getString(R.string.commit_hash)
+        val buildTimestamp = SimpleDateFormat.getDateTimeInstance(DateFormat.LONG, DateFormat.LONG,
+            Locale.getDefault()
+        ).apply { timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date(BuildConfig.BUILD_DATE)).replace("UTC", "")
+        
+        binding.appVersion.text = appVersion
+        binding.buildDate.text = buildTimestamp
+        
+        // ====================================================================
+        // TAMBAHKAN STATUS PREMIUM DI BAWAH INFORMASI VERSI
+        // ====================================================================
+        if (binding.root.findViewWithTag<View>("premium_status_tag") == null) {
+            var parentLayout = binding.buildDate.parent as? ViewGroup
+            // Jika parent adalah LinearLayout horizontal, naik ke parent berikutnya (vertikal)
+            if (parentLayout is android.widget.LinearLayout && parentLayout.orientation == android.widget.LinearLayout.HORIZONTAL) {
+                parentLayout = parentLayout.parent as? ViewGroup
             }
-
-            parentLayout?.let { parent ->
-
-                val statusView =
-                    TextView(requireContext()).apply {
-
-                        tag = "premium_status_tag"
-
-                        layoutParams =
-                            ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT
-                            )
-
-                        gravity = Gravity.CENTER
-
-                        textSize = 14f
-
-                        setPadding(
-                            0,
-                            8.toPx,
-                            0,
-                            0
-                        )
-                    }
-
-                val premium =
-                    PremiumManager.isPremium(
-                        requireContext()
+        
+            if (parentLayout != null) {
+                val premiumStatusView = TextView(requireContext()).apply {
+                    tag = "premium_status_tag"
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
                     )
-
-                if (premium) {
-
-                    val expiry =
-                        PremiumManager.getExpiryDateString(
-                            requireContext()
-                        )
-
-                    statusView.text =
-                        "Status Langganan: Aktif s/d $expiry"
-
-                    statusView.setTextColor(
-                        Color.parseColor("#4CAF50")
-                    )
-
-                } else {
-
-                    statusView.text =
-                        "Status Langganan: Gratis"
-
-                    statusView.setTextColor(
-                        Color.parseColor("#F44336")
-                    )
+                    gravity = Gravity.CENTER
+                    textSize = 14f
+                    setPadding(0, 8.toPx, 0, 0)
                 }
-
-                parent.addView(statusView)
+        
+                val isPremium = PremiumManager.isPremium(requireContext())
+                if (isPremium) {
+                    val expiryDate = PremiumManager.getExpiryDateString(requireContext())
+                    premiumStatusView.text = "Status Langganan: Aktif s/d $expiryDate"
+                    premiumStatusView.setTextColor(Color.parseColor("#4CAF50"))
+                } else {
+                    premiumStatusView.text = "Status Langganan: Gratis"
+                    premiumStatusView.setTextColor(Color.parseColor("#F44336"))
+                }
+        
+                parentLayout.addView(premiumStatusView)
             }
         }
-
+        // ====================================================================
+        
         binding.appVersionInfo.setOnLongClickListener {
-
-            clipboardHelper(
-                txt(R.string.extension_version),
-                "$appVersion $commitInfo $buildTimestamp"
-            )
-
+            clipboardHelper(txt(R.string.extension_version), "$appVersion $commitInfo $buildTimestamp")
             true
         }
-    }
-}
+    } // <--- PENUTUP onBindingCreated
+} // <--- PENUTUP class SettingsFragment
