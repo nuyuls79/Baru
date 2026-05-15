@@ -2,7 +2,6 @@ package com.lagradost.cloudstream3
 
 import android.content.Context
 import android.provider.Settings
-import androidx.annotation.Keep
 import androidx.preference.PreferenceManager
 import java.security.MessageDigest
 import java.util.Calendar
@@ -19,33 +18,20 @@ object PremiumManager {
     private const val SALT = "ADIXTREAM_SECRET_KEY_2026_SECURE"
     private const val EPOCH_YEAR = 2025
 
-    // ==================== FULL NATIVE ====================
-
-    @Keep
     external fun nativeGetPremiumRepoUrl(): String
-
-    @Keep
     external fun nativeGetFreeRepoUrl(): String
-
-    @Keep
     external fun nativeIsPremium(context: Context): Boolean
 
-    // ==================== REPO ====================
-
-    fun getPREMIUM_REPO_URL(): String {
+    fun getPremiumRepoUrl(): String {
         return nativeGetPremiumRepoUrl()
     }
 
-    fun getFREE_REPO_URL(): String {
+    fun getFreeRepoUrl(): String {
         return nativeGetFreeRepoUrl()
     }
 
-    // ==================== PREFS ====================
-
     private fun getPrefs(context: Context) =
         PreferenceManager.getDefaultSharedPreferences(context)
-
-    // ==================== DEVICE ====================
 
     fun getDeviceId(context: Context): String {
         val androidId = Settings.Secure.getString(
@@ -57,8 +43,6 @@ object PremiumManager {
             .toString()
             .take(8)
     }
-
-    // ==================== ACTIVATE ====================
 
     fun activatePremiumWithCode(
         context: Context,
@@ -75,38 +59,53 @@ object PremiumManager {
             val datePartHex = inputCode.substring(0, 3)
             val sigPartHex = inputCode.substring(3, 6)
 
-            val checkInput = "$deviceId$datePartHex$SALT"
+            val checkInput =
+                "$deviceId$datePartHex$SALT"
 
-            val md = MessageDigest.getInstance("MD5")
+            val md =
+                MessageDigest.getInstance("MD5")
 
-            val digest = md.digest(
-                checkInput.toByteArray(Charsets.UTF_8)
-            )
+            val digest =
+                md.digest(checkInput.toByteArray(Charsets.UTF_8))
 
-            val expectedSig = digest.joinToString("") {
-                "%02x".format(it)
-            }.substring(0, 3).uppercase()
+            val expectedSig =
+                digest.joinToString("") {
+                    "%02x".format(it)
+                }.substring(0, 3).uppercase()
 
             if (sigPartHex != expectedSig) {
                 return false
             }
 
-            val daysFromEpoch = datePartHex.toInt(16)
+            val daysFromEpoch =
+                datePartHex.toInt(16)
 
-            val expiryCal = Calendar.getInstance().apply {
+            val expiryCal =
+                Calendar.getInstance().apply {
 
-                set(EPOCH_YEAR, Calendar.JANUARY, 1, 0, 0, 0)
+                    set(
+                        EPOCH_YEAR,
+                        Calendar.JANUARY,
+                        1,
+                        0,
+                        0,
+                        0
+                    )
 
-                set(Calendar.MILLISECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
 
-                add(Calendar.DAY_OF_YEAR, daysFromEpoch)
+                    add(
+                        Calendar.DAY_OF_YEAR,
+                        daysFromEpoch
+                    )
 
-                set(Calendar.HOUR_OF_DAY, 23)
-                set(Calendar.MINUTE, 59)
-                set(Calendar.SECOND, 59)
-            }
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                }
 
-            val expiryTime = expiryCal.timeInMillis
+            val expiryTime =
+                expiryCal.timeInMillis
 
             if (System.currentTimeMillis() > expiryTime) {
                 return false
@@ -116,26 +115,24 @@ object PremiumManager {
 
                 putBoolean(PREF_IS_PREMIUM, true)
 
-                putLong(PREF_EXPIRY_DATE, expiryTime)
+                putLong(
+                    PREF_EXPIRY_DATE,
+                    expiryTime
+                )
 
                 apply()
             }
 
             true
 
-        } catch (_: Exception) {
-
+        } catch (e: Exception) {
             false
         }
     }
 
-    // ==================== FULL NATIVE CHECK ====================
-
     fun isPremium(context: Context): Boolean {
         return nativeIsPremium(context)
     }
-
-    // ==================== DEACTIVATE ====================
 
     fun deactivatePremium(context: Context) {
 
@@ -149,12 +146,11 @@ object PremiumManager {
         }
     }
 
-    // ==================== EXPIRY ====================
-
     fun getExpiryDateString(context: Context): String {
 
-        val date = getPrefs(context)
-            .getLong(PREF_EXPIRY_DATE, 0)
+        val date =
+            getPrefs(context)
+                .getLong(PREF_EXPIRY_DATE, 0)
 
         return if (date == 0L) {
 

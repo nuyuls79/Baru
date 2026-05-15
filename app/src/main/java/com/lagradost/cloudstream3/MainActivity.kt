@@ -1080,7 +1080,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         // --- LOGIKA REPOSITORY & UPDATE (ADIXTREAM ANTI-BUG V4 - POLLING SYSTEM) ---
         ioSafe {
             val isPremium = PremiumManager.isPremium(this@MainActivity)
-            val targetRepoUrl = if (isPremium) PremiumManager.PREMIUM_REPO_URL else PremiumManager.FREE_REPO_URL
+            val targetRepoUrl = if (isPremium) PremiumManager.getPremiumRepoUrl() else PremiumManager.getFreeRepoUrl()
 
             val currentRepos = RepositoryManager.getRepositories()
             val hasTargetRepo = currentRepos.any { it.url == targetRepoUrl }
