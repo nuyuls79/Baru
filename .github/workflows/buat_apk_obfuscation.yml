@@ -1,4 +1,4 @@
-name: Build Release (FINAL FIX)
+name: Build Release (FINAL Patch-obfuscation )
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - main
+      - Patch-obfuscation
 
 jobs:
   build:
